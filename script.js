@@ -123,6 +123,7 @@ var inCombat = false;
 var combatLocked = false;
 
 var logBox, actionButtons;
+var localUiState = { activeTab: 'adventure', statsHeroTab: 0, invHeroTab: 0 };
 
 var onlineCoop = {
     enabled: false,
@@ -134,7 +135,7 @@ var onlineCoop = {
     syncTimer: null,
     applyingSnapshot: false,
     processingRemoteCommand: false,
-    turn: 'p1',
+    turn: 'setup',
     uiState: 'none',
     uiData: null,
     pendingPathLogic: null,
@@ -179,7 +180,7 @@ function stopOnlineCoop() {
     onlineCoop.connected = false;
     onlineCoop.applyingSnapshot = false;
     onlineCoop.processingRemoteCommand = false;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'none';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -200,6 +201,25 @@ function normalizeOnlineToken(value) {
     return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
 }
 
+function extractOnlineToken(value) {
+    var raw = String(value || '').trim();
+    if (!raw) return '';
+    try { raw = decodeURIComponent(raw); } catch (e) { }
+    var normalized = normalizeOnlineToken(raw);
+    var directMatch = normalized.match(/DQ-[A-Z0-9]{8}/);
+    if (directMatch) return directMatch[0];
+    try {
+        var parsed = new URL(raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0 ? raw : ('https://' + raw));
+        var fromJoin = normalizeOnlineToken(parsed.searchParams.get('join'));
+        if (fromJoin) {
+            var joinMatch = fromJoin.match(/DQ-[A-Z0-9]{8}/);
+            if (joinMatch) return joinMatch[0];
+            return fromJoin;
+        }
+    } catch (e) { }
+    return normalized;
+}
+
 function setOnlineUiState(state, data) {
     if (!onlineCoop.enabled) return;
     onlineCoop.uiState = state || 'none';
@@ -208,23 +228,30 @@ function setOnlineUiState(state, data) {
 }
 
 function onlineTurnLabel() {
+    if (onlineCoop.turn === 'setup') return 'Подготовка';
     return onlineCoop.turn === 'p2' ? 'P2' : 'P1';
 }
 
 function canHostActInOnlineTurn() {
     if (!isOnlineHost() || !onlineCoop.connected) return true;
+    if (onlineCoop.turn === 'setup') return true;
     if (onlineCoop.processingRemoteCommand) return true;
     return onlineCoop.turn === 'p1';
 }
 
 function canGuestActInOnlineTurn() {
     if (!isOnlineGuest() || !onlineCoop.connected) return false;
+    if (onlineCoop.turn === 'setup') return false;
     return onlineCoop.turn === 'p2';
 }
 
 function advanceOnlineTurn() {
     if (!isOnlineHost() || !onlineCoop.connected) return;
-    onlineCoop.turn = (onlineCoop.turn === 'p1') ? 'p2' : 'p1';
+    if (onlineCoop.turn === 'setup') {
+        onlineCoop.turn = 'p1';
+    } else {
+        onlineCoop.turn = (onlineCoop.turn === 'p1') ? 'p2' : 'p1';
+    }
     scheduleOnlineSync(20);
 }
 
@@ -329,8 +356,6 @@ function buildOnlineSnapshot() {
         isCoop: isCoop,
         activeHeroIndex: activeHeroIndex,
         coopSelectionStep: coopSelectionStep,
-        selectedHeroStatsTab: selectedHeroStatsTab,
-        selectedHeroInvTab: selectedHeroInvTab,
         combatTurnState: combatTurnState,
         bag: bag,
         eventIndex: eventIndex,
@@ -448,6 +473,32 @@ function renderGuestActionPanel() {
 
     var isGuestTurn = canGuestActInOnlineTurn();
 
+    if (onlineCoop.uiState === 'path_discussion') {
+        renderDiscussionUi(true);
+        return;
+    }
+
+    if (onlineCoop.uiState === 'path_choice') {
+        createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'cautious' });
+        }, 'action-btn btn-muted');
+        createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'aggressive' });
+        }, 'action-btn btn-danger');
+        createActionBtn('🗣️ Вызвать скрытые силы (Диалог)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'social' });
+        }, 'action-btn btn-purple');
+        if (onlineCoop.uiData && onlineCoop.uiData.canClassP2) {
+            createActionBtn('🔮 Техника P2 (' + player2.classTitle + ')', function () {
+                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p2' });
+            }, 'action-btn btn-purple');
+        }
+        createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'crazy' });
+        }, 'action-btn btn-danger');
+        return;
+    }
+
     if (inCombat) {
         if (combatTurnState !== 'hero2' || player2.hp <= 0 || combatLocked) {
             var waitTurnBtn = createActionBtn('⏳ Ожидание вашего боевого хода...', function () { }, 'action-btn btn-muted');
@@ -490,31 +541,6 @@ function renderGuestActionPanel() {
         return;
     }
 
-    if (onlineCoop.uiState === 'path_choice') {
-        createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'cautious' });
-        }, 'action-btn btn-muted');
-        createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'aggressive' });
-        }, 'action-btn btn-danger');
-        createActionBtn('🗣️ Вызвать скрытые силы (Диалог)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'social' });
-        }, 'action-btn btn-purple');
-        if (onlineCoop.uiData && onlineCoop.uiData.canClassP1) {
-            createActionBtn('🔮 Техника P1 (' + player.classTitle + ')', function () {
-                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p1' });
-            }, 'action-btn btn-primary');
-        }
-        if (onlineCoop.uiData && onlineCoop.uiData.canClassP2) {
-            createActionBtn('🔮 Техника P2 (' + player2.classTitle + ')', function () {
-                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p2' });
-            }, 'action-btn btn-purple');
-        }
-        createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'crazy' });
-        }, 'action-btn btn-danger');
-        return;
-    }
 
     if (onlineCoop.uiState === 'shop') {
         ShopCatalog.forEach(function (item) {
@@ -548,6 +574,78 @@ function renderGuestActionPanel() {
     waitStateBtn.disabled = true;
 }
 
+function actionLabelByKey(actionKey) {
+    var labels = {
+        cautious: 'Осторожно (Скрытность)',
+        aggressive: 'Напролом (Агрессия)',
+        social: 'Диалог',
+        class_p1: 'Техника P1',
+        class_p2: 'Техника P2',
+        crazy: 'Безумие'
+    };
+    return labels[actionKey] || actionKey;
+}
+
+function renderDiscussionUi(isGuestView) {
+    if (!actionButtons) return;
+    var d = onlineCoop.uiData || {};
+    var p1Choice = actionLabelByKey(d.p1Action || '—');
+    var p2Choice = actionLabelByKey(d.p2Action || '—');
+    var chat = d.chat || [];
+    actionButtons.innerHTML = '';
+    var box = document.createElement('div');
+    box.className = 'online-discussion-box';
+    box.innerHTML = '<div class="log-entry story"><b>🧭 Решения расходятся:</b> P1 → ' + p1Choice + ', P2 → ' + p2Choice + '.</div>';
+    var list = document.createElement('div');
+    list.className = 'discussion-chat-list';
+    list.innerHTML = chat.map(function (m) { return '<div class="log-entry normal"><b>' + m.author + ':</b> ' + m.text + '</div>'; }).join('') || '<div class="log-entry system">Чат пуст. Обсудите и примите решение.</div>';
+    box.appendChild(list);
+    var input = document.createElement('input');
+    input.className = 'discussion-chat-input';
+    input.placeholder = 'Сообщение для обсуждения...';
+    box.appendChild(input);
+    actionButtons.appendChild(box);
+    createActionBtn('💬 Отправить', function () {
+        var txt = (input.value || '').trim();
+        if (!txt) return;
+        if (isGuestView) {
+            sendOnlinePacket({ type: 'cmd', cmd: 'discussion_chat', text: txt });
+        } else {
+            if (!onlineCoop.uiData.chat) onlineCoop.uiData.chat = [];
+            onlineCoop.uiData.chat.push({ author: 'P1', text: txt.slice(0, 120) });
+            scheduleOnlineSync(20);
+            renderDiscussionUi(false);
+        }
+    }, 'action-btn btn-muted');
+    createActionBtn('✅ Согласен', function () {
+        if (isGuestView) sendOnlinePacket({ type: 'cmd', cmd: 'discussion_vote', vote: 'agree' });
+        else resolvePathOutcomeByWinner('p1');
+    }, 'action-btn btn-success');
+    createActionBtn('❌ Не согласен', function () {
+        if (isGuestView) sendOnlinePacket({ type: 'cmd', cmd: 'discussion_vote', vote: 'disagree' });
+        else {
+            if (!onlineCoop.uiData.votes) onlineCoop.uiData.votes = {};
+            onlineCoop.uiData.votes.p1 = 'disagree';
+            scheduleOnlineSync(20);
+            renderDiscussionUi(false);
+        }
+    }, 'action-btn btn-danger');
+    if ((d.votes && d.votes.p1 === 'disagree') || (d.votes && d.votes.p2 === 'disagree')) {
+        createActionBtn('🎲 Бросить кости', function () {
+            if (isGuestView) sendOnlinePacket({ type: 'cmd', cmd: 'discussion_roll' });
+            else runDiscussionDiceRoll();
+        }, 'action-btn btn-primary');
+    }
+    if (d.diceRolling || d.diceResult) {
+        var rollInfo = document.createElement('div');
+        rollInfo.className = 'dice-roll-board' + (d.diceRolling ? ' rolling' : '');
+        var p1v = d.diceRolling ? '?' : (d.diceResult ? d.diceResult.p1 : '-');
+        var p2v = d.diceRolling ? '?' : (d.diceResult ? d.diceResult.p2 : '-');
+        rollInfo.innerHTML = '<div>P1 🎲 <b>' + p1v + '</b></div><div>P2 🎲 <b>' + p2v + '</b></div>';
+        actionButtons.appendChild(rollInfo);
+    }
+}
+
 function applyOnlineSnapshot(packet) {
     if (!isOnlineGuest() || !packet || !packet.state) return;
 
@@ -557,8 +655,6 @@ function applyOnlineSnapshot(packet) {
     isCoop = !!s.isCoop;
     activeHeroIndex = s.activeHeroIndex || 0;
     coopSelectionStep = s.coopSelectionStep || 0;
-    selectedHeroStatsTab = s.selectedHeroStatsTab || 0;
-    selectedHeroInvTab = s.selectedHeroInvTab || 0;
     combatTurnState = s.combatTurnState || 'hero1';
 
     bag = s.bag || [];
@@ -583,12 +679,18 @@ function applyOnlineSnapshot(packet) {
         logBox.scrollTop = logBox.scrollHeight;
     }
 
+    var keepTab = localUiState.activeTab || 'adventure';
     refreshGuestViewFromSnapshot();
     updateEnemyHpBar();
     renderStatusEffects();
     renderMinimap();
     updateStats();
     renderPerksList();
+    switchTab(keepTab);
+    if (isCoop) {
+        toggleStatsHero(localUiState.statsHeroTab || 0);
+        toggleInventoryHero(localUiState.invHeroTab || 0);
+    }
 
     onlineCoop.applyingSnapshot = false;
     renderGuestActionPanel();
@@ -613,16 +715,42 @@ function handleHostCommand(packet) {
         }
 
         if (packet.cmd === 'path_action') {
-            if (onlineCoop.turn !== 'p2' || onlineCoop.uiState !== 'path_choice') return;
+            if (onlineCoop.uiState !== 'path_choice') return;
             var action = packet.action;
-            var logic = onlineCoop.pendingPathLogic || 'normal';
-            if (action === 'aggressive') worldMemory.playerIsRuthless = true;
-            if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
-            if (action === 'class_p1') { handlePathOutcome('class', logic, player); return; }
-            if (action === 'class_p2') { handlePathOutcome('class', logic, player2); return; }
-            if (action === 'cautious' || action === 'aggressive' || action === 'social' || action === 'crazy') {
-                handlePathOutcome(action, logic);
+            if (!onlineCoop.uiData) onlineCoop.uiData = {};
+            onlineCoop.uiData.p2Action = action;
+            tryResolvePathChoiceConsensus();
+            scheduleOnlineSync(20);
+            return;
+        }
+
+        if (packet.cmd === 'discussion_chat') {
+            if (onlineCoop.uiState !== 'path_discussion') return;
+            if (!onlineCoop.uiData) onlineCoop.uiData = {};
+            if (!onlineCoop.uiData.chat) onlineCoop.uiData.chat = [];
+            onlineCoop.uiData.chat.push({ author: 'P2', text: String(packet.text || '').slice(0, 120) });
+            scheduleOnlineSync(20);
+            renderDiscussionUi(false);
+            return;
+        }
+
+        if (packet.cmd === 'discussion_vote') {
+            if (onlineCoop.uiState !== 'path_discussion') return;
+            if (!onlineCoop.uiData) onlineCoop.uiData = {};
+            if (!onlineCoop.uiData.votes) onlineCoop.uiData.votes = {};
+            onlineCoop.uiData.votes.p2 = packet.vote;
+            if (packet.vote === 'agree') {
+                resolvePathOutcomeByWinner('p1');
             }
+            scheduleOnlineSync(20);
+            renderDiscussionUi(false);
+            return;
+        }
+
+        if (packet.cmd === 'discussion_roll') {
+            if (onlineCoop.uiState !== 'path_discussion') return;
+            runDiscussionDiceRoll();
+            renderDiscussionUi(false);
             return;
         }
 
@@ -739,7 +867,7 @@ function startOnlineHostLobby() {
     onlineCoop.enabled = true;
     onlineCoop.role = 'host';
     onlineCoop.connected = false;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'class_select_p1';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -794,7 +922,7 @@ function startOnlineGuestLobby(tokenInput) {
         return;
     }
 
-    var hostToken = normalizeOnlineToken(tokenInput);
+    var hostToken = extractOnlineToken(tokenInput);
     if (!hostToken) {
         log('⚠️ Пустой токен. Попробуйте ещё раз.', 'system');
         return;
@@ -812,7 +940,7 @@ function startOnlineGuestLobby(tokenInput) {
     onlineCoop.token = hostToken;
     onlineCoop.guestJoinToken = hostToken;
     onlineCoop.guestJoinAttempts = 0;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'class_select_p1';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -843,7 +971,7 @@ function startOnlineGuestLobby(tokenInput) {
 }
 
 function promptOnlineJoin() {
-    var raw = window.prompt('Введите токен друга или вставьте ссылку приглашения:', '');
+    var raw = window.prompt('Введите токен друга (например DQ-2ZPPWRVH) или вставьте ссылку приглашения:', '');
     if (!raw) return;
     var token = raw;
     try {
@@ -861,7 +989,7 @@ function promptOnlineJoin() {
             });
         }
     } catch (e) { }
-    startOnlineGuestLobby(token);
+    startOnlineGuestLobby(extractOnlineToken(token));
 }
 
 function guardGuestReadOnly() {
@@ -934,6 +1062,7 @@ function log(text, type) {
 }
 
 function switchTab(tabName) {
+    localUiState.activeTab = tabName;
     if (!player.classKey && tabName !== 'adventure') return;
     document.querySelectorAll('.game-tab-content').forEach(function (el) { el.classList.remove('active-content'); });
     document.querySelectorAll('.tab-btn').forEach(function (el) { el.classList.remove('active-tab'); });
@@ -1619,8 +1748,11 @@ function triggerRandomEvent() {
     // Tech options for living classes
     var hasP1Ability = player.hp > 0;
     var hasP2Ability = isCoop && player2.hp > 0;
-    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
-    setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability });
+    if (isOnlineHost() && onlineCoop.connected) {
+        setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability, p1Action: null, p2Action: null });
+    } else {
+        setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability });
+    }
 
     actionButtons.innerHTML = '';
     if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
@@ -1629,18 +1761,74 @@ function triggerRandomEvent() {
         return;
     }
 
-    createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () { handlePathOutcome('cautious', chosenLogic); }, 'action-btn btn-muted');
-    createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () { worldMemory.playerIsRuthless = true; handlePathOutcome('aggressive', chosenLogic); }, 'action-btn btn-danger');
+    createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () { submitHostPathChoice('cautious'); }, 'action-btn btn-muted');
+    createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () { submitHostPathChoice('aggressive'); }, 'action-btn btn-danger');
 
     var socialTxt = worldMemory.playerIsRuthless ? '🗣️ Закричать во тьму (Вас боятся)' : '🗣️ Воззвать к скрытым силам (Диалог)';
-    createActionBtn(socialTxt, function () { if (!worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true; handlePathOutcome('social', chosenLogic); }, 'action-btn btn-purple');
+    createActionBtn(socialTxt, function () { submitHostPathChoice('social'); }, 'action-btn btn-purple');
     if (hasP1Ability) {
-        createActionBtn('🔮 Использовать технику (' + player.classTitle + ')', function () { handlePathOutcome('class', chosenLogic, player); }, 'action-btn btn-primary');
+        createActionBtn('🔮 Использовать технику (' + player.classTitle + ')', function () { submitHostPathChoice('class_p1'); }, 'action-btn btn-primary');
     }
-    if (hasP2Ability) {
+    if (hasP2Ability && !(isOnlineHost() && onlineCoop.connected)) {
         createActionBtn('🔮 Использовать технику (' + player2.classTitle + ')', function () { handlePathOutcome('class', chosenLogic, player2); }, 'action-btn btn-purple');
     }
-    createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () { handlePathOutcome('crazy', chosenLogic); }, 'action-btn btn-danger');
+    createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () { submitHostPathChoice('crazy'); }, 'action-btn btn-danger');
+}
+
+function submitHostPathChoice(action) {
+    if (!isOnlineHost() || !onlineCoop.connected || onlineCoop.uiState !== 'path_choice') {
+        var logic = onlineCoop.pendingPathLogic || 'normal';
+        if (action === 'aggressive') worldMemory.playerIsRuthless = true;
+        if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
+        if (action === 'class_p1') return handlePathOutcome('class', logic, player);
+        if (action === 'class_p2') return handlePathOutcome('class', logic, player2);
+        return handlePathOutcome(action, logic);
+    }
+    if (!onlineCoop.uiData) onlineCoop.uiData = {};
+    onlineCoop.uiData.p1Action = action;
+    tryResolvePathChoiceConsensus();
+    scheduleOnlineSync(20);
+}
+
+function tryResolvePathChoiceConsensus() {
+    if (!isOnlineHost() || onlineCoop.uiState !== 'path_choice' || !onlineCoop.uiData) return;
+    var p1 = onlineCoop.uiData.p1Action;
+    var p2 = onlineCoop.uiData.p2Action;
+    if (!p1 || !p2) return;
+    if (p1 === p2) {
+        resolvePathOutcomeByWinner('p1');
+        return;
+    }
+    setOnlineUiState('path_discussion', { p1Action: p1, p2Action: p2, chat: [], votes: { p1: null, p2: null }, diceRolling: false, diceResult: null });
+    renderDiscussionUi(false);
+}
+
+function resolvePathOutcomeByWinner(winner) {
+    if (!isOnlineHost() || !onlineCoop.uiData) return;
+    var logic = onlineCoop.pendingPathLogic || 'normal';
+    var action = winner === 'p2' ? onlineCoop.uiData.p2Action : onlineCoop.uiData.p1Action;
+    if (action === 'aggressive') worldMemory.playerIsRuthless = true;
+    if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
+    if (action === 'class_p2') return handlePathOutcome('class', logic, player2);
+    if (action === 'class_p1') return handlePathOutcome('class', logic, player);
+    return handlePathOutcome(action, logic);
+}
+
+function runDiscussionDiceRoll() {
+    if (!isOnlineHost() || onlineCoop.uiState !== 'path_discussion' || !onlineCoop.uiData) return;
+    if (onlineCoop.uiData.diceRolling) return;
+    onlineCoop.uiData.diceRolling = true;
+    onlineCoop.uiData.diceResult = null;
+    scheduleOnlineSync(10);
+    setTimeout(function () {
+        var p1Roll = 1 + Math.floor(Math.random() * 20);
+        var p2Roll = 1 + Math.floor(Math.random() * 20);
+        onlineCoop.uiData.diceRolling = false;
+        onlineCoop.uiData.diceResult = { p1: p1Roll, p2: p2Roll };
+        scheduleOnlineSync(20);
+        var winner = p1Roll >= p2Roll ? 'p1' : 'p2';
+        setTimeout(function () { resolvePathOutcomeByWinner(winner); }, 1000);
+    }, 1400);
 }
 
 function handlePathOutcome(action, logic, hero) {
@@ -2743,6 +2931,7 @@ function resetGameState() {
     coopSelectionStep = 0;
     selectedHeroStatsTab = 0;
     selectedHeroInvTab = 0;
+    localUiState = { activeTab: 'adventure', statsHeroTab: 0, invHeroTab: 0 };
     combatTurnState = 'hero1';
     
     player = {
@@ -2770,7 +2959,7 @@ function resetGameState() {
     gameStats = { enemiesSlain: 0, goldEarned: 0, roomsCleared: 0 };
     inCombat = false;
     combatLocked = false;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'none';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -2781,6 +2970,7 @@ function resetGameState() {
 // ─────────────────────────────────────────────────────
 function toggleStatsHero(idx) {
     selectedHeroStatsTab = idx;
+    localUiState.statsHeroTab = idx;
     var btn1 = document.getElementById('stats-toggle-p1');
     var btn2 = document.getElementById('stats-toggle-p2');
     if (btn1) btn1.classList.toggle('active-tab', idx === 0);
@@ -2792,6 +2982,7 @@ function toggleStatsHero(idx) {
 
 function toggleInventoryHero(idx) {
     selectedHeroInvTab = idx;
+    localUiState.invHeroTab = idx;
     var btn1 = document.getElementById('inv-toggle-p1');
     var btn2 = document.getElementById('inv-toggle-p2');
     if (btn1) btn1.classList.toggle('active-tab', idx === 0);
@@ -2814,7 +3005,7 @@ function startDungeonGame() {
 
     try {
         var params = new URLSearchParams(window.location.search);
-        var joinToken = normalizeOnlineToken(params.get('join'));
+        var joinToken = extractOnlineToken(params.get('join'));
         if (joinToken) {
             showModeSelect();
             startOnlineGuestLobby(joinToken);
