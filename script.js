@@ -2217,6 +2217,10 @@ function processStatusEffects() {
 function playerAttack(isHeavy, hero) {
     if (guardGuestReadOnly()) return;
     if (combatLocked) return;
+    if (!hero) {
+        log('⚠️ Атака отменена: герой не найден.', 'system');
+        return;
+    }
     combatLocked = true;
     disableCombatButtons();
 
@@ -2224,6 +2228,7 @@ function playerAttack(isHeavy, hero) {
     var selfId = isPlayer1 ? 'player-theater' : 'player2-theater';
     var selfEl = document.getElementById(selfId);
 
+    // Resource check must run per attack (inside playerAttack), not at file scope.
     var actionCost = (hero.staminaCost || 10) + (isHeavy ? 6 : 0);
     if ((hero.stamina || 0) < actionCost) {
         log('🪫 Недостаточно ресурса (' + (hero.usesMana ? 'маны' : 'выносливости') + ') для атаки.', 'system');
