@@ -627,6 +627,12 @@ body {
 .action-btn:active:not(:disabled) { transform: translateY(0); }
 .action-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
 
+@keyframes spin {
+    from { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.18); }
+    to { transform: rotate(360deg) scale(1); }
+}
+
 /* Button color variants */
 .btn-primary { background: linear-gradient(135deg, rgba(49,130,206,0.38), rgba(43,108,176,0.28)); border-color: rgba(99,179,237,0.45); }
 .btn-danger  { background: linear-gradient(135deg, rgba(197,48,48,0.38), rgba(145,35,35,0.28)); border-color: rgba(252,129,129,0.4); }
