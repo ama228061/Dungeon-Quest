@@ -2224,6 +2224,16 @@ function playerAttack(isHeavy, hero) {
     var selfId = isPlayer1 ? 'player-theater' : 'player2-theater';
     var selfEl = document.getElementById(selfId);
 
+    var actionCost = (hero.staminaCost || 10) + (isHeavy ? 6 : 0);
+    if ((hero.stamina || 0) < actionCost) {
+        log('🪫 Недостаточно ресурса (' + (hero.usesMana ? 'маны' : 'выносливости') + ') для атаки.', 'system');
+        combatLocked = false;
+        showCombatOptions();
+        return;
+    }
+    hero.stamina = Math.max(0, hero.stamina - actionCost);
+    updateStats();
+
     var roll = Math.floor(Math.random() * 20) + 1;
     var dc = isHeavy ? 12 : 8;
     var totalRoll = roll + hero.speed + hero.bonus;
@@ -3064,10 +3074,3 @@ if (document.readyState === 'loading') {
 } else {
     startDungeonGame();
 }
-    var actionCost = (hero.staminaCost || 10) + (isHeavy ? 6 : 0);
-    if ((hero.stamina || 0) < actionCost) {
-        log('🪫 Недостаточно ресурса (' + (hero.usesMana ? 'маны' : 'выносливости') + ') для атаки.', 'system');
-        combatLocked = false;
-        return;
-    }
-    hero.stamina = Math.max(0, hero.stamina - actionCost);
