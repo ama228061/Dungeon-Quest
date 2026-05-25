@@ -137,7 +137,10 @@ var onlineCoop = {
     turn: 'p1',
     uiState: 'none',
     uiData: null,
-    pendingPathLogic: null
+    pendingPathLogic: null,
+    guestJoinToken: '',
+    guestJoinAttempts: 0,
+    guestRetryTimer: null
 };
 
 function supportsOnlineCoop() {
@@ -161,6 +164,10 @@ function stopOnlineCoop() {
         clearTimeout(onlineCoop.syncTimer);
         onlineCoop.syncTimer = null;
     }
+    if (onlineCoop.guestRetryTimer) {
+        clearTimeout(onlineCoop.guestRetryTimer);
+        onlineCoop.guestRetryTimer = null;
+    }
     try { if (onlineCoop.conn) onlineCoop.conn.close(); } catch (e) { }
     try { if (onlineCoop.peer) onlineCoop.peer.destroy(); } catch (e) { }
 
@@ -176,6 +183,8 @@ function stopOnlineCoop() {
     onlineCoop.uiState = 'none';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
+    onlineCoop.guestJoinToken = '';
+    onlineCoop.guestJoinAttempts = 0;
 }
 
 function makeOnlineToken() {
@@ -223,6 +232,91 @@ function guardHostTurnOnly(actionTitle) {
     if (canHostActInOnlineTurn()) return false;
     log('⏳ Сейчас ход друга (' + onlineTurnLabel() + '). Действие: ' + actionTitle, 'system');
     return true;
+}
+
+function buildInviteLink(token) {
+    var base = window.location.origin + window.location.pathname;
+    var params = new URLSearchParams();
+    params.set('join', token);
+    try {
+        var current = new URLSearchParams(window.location.search);
+        ['peerHost', 'peerPort', 'peerPath', 'peerSecure'].forEach(function (k) {
+            var v = current.get(k);
+            if (v) params.set(k, v);
+        });
+    } catch (e) { }
+    return base + '?' + params.toString();
+}
+
+function getDefaultIceServers() {
+    return [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' }
+    ];
+}
+
+function createPeerOptions() {
+    var opts = {
+        debug: 2,
+        host: '0.peerjs.com',
+        port: 443,
+        secure: true,
+        config: {
+            iceServers: getDefaultIceServers()
+        }
+    };
+
+    try {
+        var params = new URLSearchParams(window.location.search);
+        var peerHost = params.get('peerHost');
+        var peerPort = parseInt(params.get('peerPort') || '', 10);
+        var peerPath = params.get('peerPath');
+        var peerSecure = params.get('peerSecure');
+
+        if (peerHost) opts.host = peerHost;
+        if (!isNaN(peerPort)) opts.port = peerPort;
+        if (peerPath) opts.path = peerPath;
+        if (peerSecure === 'false' || peerSecure === '0') opts.secure = false;
+        if (peerSecure === 'true' || peerSecure === '1') opts.secure = true;
+    } catch (e) { }
+
+    return opts;
+}
+
+function queueGuestReconnect() {
+    if (!isOnlineGuest() || !onlineCoop.peer || onlineCoop.connected) return;
+    if (onlineCoop.guestRetryTimer) clearTimeout(onlineCoop.guestRetryTimer);
+
+    if (onlineCoop.guestJoinAttempts >= 8) {
+        log('⚠️ Не удалось подключиться. Проверьте, что хост онлайн и токен введён без ошибок.', 'system');
+        renderGuestActionPanel();
+        return;
+    }
+
+    onlineCoop.guestRetryTimer = setTimeout(function () {
+        onlineCoop.guestRetryTimer = null;
+        connectGuestToHost();
+    }, 1500);
+}
+
+function connectGuestToHost() {
+    if (!isOnlineGuest() || !onlineCoop.peer || !onlineCoop.guestJoinToken) return;
+    if (onlineCoop.connected) return;
+
+    onlineCoop.guestJoinAttempts++;
+    if (onlineCoop.conn && !onlineCoop.conn.open) {
+        try { onlineCoop.conn.close(); } catch (e) { }
+        onlineCoop.conn = null;
+    }
+
+    var conn = onlineCoop.peer.connect(onlineCoop.guestJoinToken, { reliable: true, serialization: 'json' });
+    bindOnlineConnection(conn);
+
+    if (onlineCoop.guestRetryTimer) clearTimeout(onlineCoop.guestRetryTimer);
+    onlineCoop.guestRetryTimer = setTimeout(function () {
+        onlineCoop.guestRetryTimer = null;
+        if (!onlineCoop.connected) queueGuestReconnect();
+    }, 4500);
 }
 
 function sendOnlinePacket(packet) {
@@ -579,6 +673,10 @@ function bindOnlineConnection(conn) {
 
     conn.on('open', function () {
         onlineCoop.connected = true;
+        if (onlineCoop.guestRetryTimer) {
+            clearTimeout(onlineCoop.guestRetryTimer);
+            onlineCoop.guestRetryTimer = null;
+        }
         if (isOnlineHost()) {
             log('🔗 Друг подключился к вашему кооперативу!', 'level-up');
             sendOnlineSnapshot();
@@ -610,6 +708,7 @@ function bindOnlineConnection(conn) {
             log('⚠️ Друг отключился. Можно продолжать локально или создать новый токен.', 'system');
         } else if (isOnlineGuest()) {
             log('⚠️ Соединение с хостом закрыто.', 'system');
+            queueGuestReconnect();
             renderGuestActionPanel();
         }
     });
@@ -619,6 +718,7 @@ function bindOnlineConnection(conn) {
         if (isOnlineHost()) log('⚠️ Ошибка соединения с другом.', 'system');
         if (isOnlineGuest()) {
             log('⚠️ Ошибка соединения с хостом.', 'system');
+            queueGuestReconnect();
             renderGuestActionPanel();
         }
     });
@@ -658,12 +758,14 @@ function startOnlineHostLobby() {
     }
 
     var token = makeOnlineToken();
-    onlineCoop.peer = new Peer(token);
+    onlineCoop.peer = new Peer(token, createPeerOptions());
 
     onlineCoop.peer.on('open', function (id) {
         onlineCoop.token = id;
         initClassSelect();
         log('🧷 Токен сессии: <b>' + id.toUpperCase() + '</b>', 'level-up');
+        var inviteLink = buildInviteLink(id.toUpperCase());
+        log('🔗 Ссылка для друга: <code>' + inviteLink + '</code>', 'system');
         log('📋 Друг открывает игру, жмёт "Подключиться по токену" и вводит этот код.', 'system');
     });
 
@@ -676,7 +778,12 @@ function startOnlineHostLobby() {
     });
 
     onlineCoop.peer.on('error', function (err) {
-        log('⚠️ Не удалось создать токен: ' + ((err && err.type) ? err.type : 'network-error'), 'system');
+        var hostErr = (err && err.type) ? err.type : 'network-error';
+        if (hostErr === 'unavailable-id') {
+            log('⚠️ Токен уже занят. Нажмите "Назад" и создайте новый.', 'system');
+        } else {
+            log('⚠️ Не удалось создать токен: ' + hostErr, 'system');
+        }
         stopOnlineCoop();
     });
 }
@@ -703,6 +810,8 @@ function startOnlineGuestLobby(tokenInput) {
     onlineCoop.role = 'guest';
     onlineCoop.connected = false;
     onlineCoop.token = hostToken;
+    onlineCoop.guestJoinToken = hostToken;
+    onlineCoop.guestJoinAttempts = 0;
     onlineCoop.turn = 'p1';
     onlineCoop.uiState = 'class_select_p1';
     onlineCoop.uiData = null;
@@ -714,27 +823,44 @@ function startOnlineGuestLobby(tokenInput) {
     if (actionButtons) actionButtons.innerHTML = '';
     renderGuestActionPanel();
 
-    onlineCoop.peer = new Peer();
+    onlineCoop.peer = new Peer(undefined, createPeerOptions());
 
     onlineCoop.peer.on('open', function () {
-        var conn = onlineCoop.peer.connect(hostToken, { reliable: true, serialization: 'json' });
-        bindOnlineConnection(conn);
+        connectGuestToHost();
     });
 
     onlineCoop.peer.on('error', function (err) {
         var errType = (err && err.type) ? err.type : 'network-error';
         if (errType === 'peer-unavailable') {
             log('⚠️ Ошибка подключения: токен не найден или хост ещё не онлайн (peer-unavailable).', 'system');
+            queueGuestReconnect();
         } else {
             log('⚠️ Ошибка подключения: ' + errType, 'system');
+            queueGuestReconnect();
         }
         renderGuestActionPanel();
     });
 }
 
 function promptOnlineJoin() {
-    var token = window.prompt('Введите токен друга (пример: DQ-ABC12345):', '');
-    if (!token) return;
+    var raw = window.prompt('Введите токен друга или вставьте ссылку приглашения:', '');
+    if (!raw) return;
+    var token = raw;
+    try {
+        if (raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0) {
+            var u = new URL(raw);
+            var maybeJoin = u.searchParams.get('join');
+            if (maybeJoin) token = maybeJoin;
+            ['peerHost', 'peerPort', 'peerPath', 'peerSecure'].forEach(function (k) {
+                var v = u.searchParams.get(k);
+                if (v) {
+                    var cur = new URL(window.location.href);
+                    cur.searchParams.set(k, v);
+                    window.history.replaceState({}, '', cur.toString());
+                }
+            });
+        }
+    } catch (e) { }
     startOnlineGuestLobby(token);
 }
 
@@ -1493,6 +1619,7 @@ function triggerRandomEvent() {
     // Tech options for living classes
     var hasP1Ability = player.hp > 0;
     var hasP2Ability = isCoop && player2.hp > 0;
+    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
     setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability });
 
     actionButtons.innerHTML = '';
@@ -2684,6 +2811,16 @@ function startDungeonGame() {
     }
 
     initCanvas();
+
+    try {
+        var params = new URLSearchParams(window.location.search);
+        var joinToken = normalizeOnlineToken(params.get('join'));
+        if (joinToken) {
+            showModeSelect();
+            startOnlineGuestLobby(joinToken);
+            return;
+        }
+    } catch (e) { }
 
     var hasSave = loadGame();
     if (hasSave && player.classKey) {
