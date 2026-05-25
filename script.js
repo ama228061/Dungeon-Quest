@@ -472,6 +472,32 @@ function renderGuestActionPanel() {
 
     var isGuestTurn = canGuestActInOnlineTurn();
 
+    if (onlineCoop.uiState === 'path_discussion') {
+        renderDiscussionUi(true);
+        return;
+    }
+
+    if (onlineCoop.uiState === 'path_choice') {
+        createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'cautious' });
+        }, 'action-btn btn-muted');
+        createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'aggressive' });
+        }, 'action-btn btn-danger');
+        createActionBtn('🗣️ Вызвать скрытые силы (Диалог)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'social' });
+        }, 'action-btn btn-purple');
+        if (onlineCoop.uiData && onlineCoop.uiData.canClassP2) {
+            createActionBtn('🔮 Техника P2 (' + player2.classTitle + ')', function () {
+                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p2' });
+            }, 'action-btn btn-purple');
+        }
+        createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'crazy' });
+        }, 'action-btn btn-danger');
+        return;
+    }
+
     if (inCombat) {
         if (combatTurnState !== 'hero2' || player2.hp <= 0 || combatLocked) {
             var waitTurnBtn = createActionBtn('⏳ Ожидание вашего боевого хода...', function () { }, 'action-btn btn-muted');
@@ -514,31 +540,6 @@ function renderGuestActionPanel() {
         return;
     }
 
-    if (onlineCoop.uiState === 'path_choice') {
-        createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'cautious' });
-        }, 'action-btn btn-muted');
-        createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'aggressive' });
-        }, 'action-btn btn-danger');
-        createActionBtn('🗣️ Вызвать скрытые силы (Диалог)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'social' });
-        }, 'action-btn btn-purple');
-        if (onlineCoop.uiData && onlineCoop.uiData.canClassP2) {
-            createActionBtn('🔮 Техника P2 (' + player2.classTitle + ')', function () {
-                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p2' });
-            }, 'action-btn btn-purple');
-        }
-        createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () {
-            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'crazy' });
-        }, 'action-btn btn-danger');
-        return;
-    }
-
-    if (onlineCoop.uiState === 'path_discussion') {
-        renderDiscussionUi(true);
-        return;
-    }
 
     if (onlineCoop.uiState === 'shop') {
         ShopCatalog.forEach(function (item) {
