@@ -200,12 +200,12 @@ body {
     box-shadow: 0 0 10px var(--hp-glow);
 }
 .hp-fill.hp-high {
-    background: linear-gradient(90deg, #276749, #68d391);
-    box-shadow: 0 0 8px rgba(72, 187, 120, 0.4);
+    background: linear-gradient(90deg, #c53030, #f56565);
+    box-shadow: 0 0 8px rgba(245, 101, 101, 0.4);
 }
 .hp-fill.hp-mid {
-    background: linear-gradient(90deg, #b7791f, #ecc94b);
-    box-shadow: 0 0 8px rgba(236, 201, 75, 0.35);
+    background: linear-gradient(90deg, #9b2c2c, #f56565);
+    box-shadow: 0 0 8px rgba(245, 101, 101, 0.35);
 }
 .hp-fill.hp-low {
     background: linear-gradient(90deg, #9b2c2c, #f56565);
@@ -227,6 +227,14 @@ body {
 .enemy-hp-fill {
     background: linear-gradient(90deg, #c53030, #fc8181);
     transition: width 0.4s ease;
+}
+.stamina-fill {
+    background: linear-gradient(90deg, #2f855a, #68d391);
+    box-shadow: 0 0 8px rgba(104, 211, 145, 0.45);
+}
+.mana-fill {
+    background: linear-gradient(90deg, #6b46c1, #b794f4);
+    box-shadow: 0 0 8px rgba(183, 148, 244, 0.45);
 }
 
 /* Bar labels */

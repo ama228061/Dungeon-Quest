@@ -11,6 +11,7 @@ var Sprites = {
     BERSERK: '<svg class="hd-art" style="--glow-color:#f56565" viewBox="0 0 64 64" fill="none" stroke="#fc8181" stroke-width="2.5"><path d="M26 12h12v12H26z"/><path d="M14 24h36v8H14z"/><path d="M20 32v20l12 6 12-6V32"/><path d="M8 12l10 12M56 12L46 24"/></svg>',
     ALCHEMIST: '<svg class="hd-art" style="--glow-color:#b794f4" viewBox="0 0 64 64" fill="none" stroke="#d6bcfa" stroke-width="2.5"><path d="M24 6h16M32 6v14"/><path d="M44 42A16 16 0 1 1 20 42l4-22h16l4 22z"/><path d="M22 34h20"/></svg>',
     SCOUT: '<svg class="hd-art" style="--glow-color:#48bb78" viewBox="0 0 64 64" fill="none" stroke="#68d391" stroke-width="2.5"><path d="M52 12L12 52M52 12H32M52 12v20"/><path d="M16 16c10 0 24 14 24 24"/></svg>',
+    MAGE: '<svg class="hd-art" style="--glow-color:#9f7aea" viewBox="0 0 64 64" fill="none" stroke="#b794f4" stroke-width="2.5"><path d="M32 6l7 14 15 2-11 10 3 15-14-8-14 8 3-15-11-10 15-2z"/><path d="M32 39v19"/><circle cx="32" cy="52" r="4"/></svg>',
     SPIDER: '<svg class="hd-art" style="--glow-color:#a0aec0" viewBox="0 0 64 64" fill="none" stroke="#cbd5e0" stroke-width="2.5"><circle cx="32" cy="32" r="10"/><path d="M24 26L8 16M40 26l16-10M22 32H4M42 32h18M24 38L8 48M40 38l16 10"/></svg>',
     SKELETON: '<svg class="hd-art" style="--glow-color:#e2e8f0" viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="2.5"><rect x="22" y="8" width="20" height="20" rx="6"/><path d="M32 28v20M20 36h24M24 56v-8h16v8"/></svg>',
     GOBLIN: '<svg class="hd-art" style="--glow-color:#38a169" viewBox="0 0 64 64" fill="none" stroke="#48bb78" stroke-width="2.5"><path d="M32 10c-10 0-16 8-16 16 0 10 16 24 16 24s16-14 16-24c0-8-6-16-16-16z"/><path d="M16 20l-10-6 4 12M48 20l10-6-4 12"/></svg>',
@@ -27,7 +28,8 @@ var ClassDescriptions = {
     TANK: '<div><strong style="color:#63b3ed;font-size:0.95rem;">🛡️ КЛАСС: ТАНК</strong><br><em style="color:#718096;font-size:0.75rem;">Бастион выносливости и железной защиты.</em><div style="margin-top:10px;font-size:0.78rem;display:flex;flex-direction:column;gap:6px;"><div>🟢 <b>Каменная стена:</b> Получает на 20% меньше урона. Повышенный запас HP.</div><div>⚡ <b>Живой щит:</b> Блокирует следующий удар врага, превращая его в контратаку.</div><div>🔍 <b>Специфика:</b> Врождённый бонус к сложным проверкам защиты в комнатах.</div></div></div>',
     BERSERK: '<div><strong style="color:#fc8181;font-size:0.95rem;">🪓 КЛАСС: БЕРСЕРК</strong><br><em style="color:#718096;font-size:0.75rem;">Мастер ярости, расцветающий на пороге гибели.</em><div style="margin-top:10px;font-size:0.78rem;display:flex;flex-direction:column;gap:6px;"><div>🟢 <b>Кровавый кураж:</b> Чем ниже здоровье, тем сильнее критические удары.</div><div>⚡ <b>Безрассудный замах:</b> 2.5× урон по цели, ценой 10 ХП.</div><div>🔍 <b>Специфика:</b> Огромный бонус к веткам Агрессия и Безумие.</div></div></div>',
     ALCHEMIST: '<div><strong style="color:#d6bcfa;font-size:0.95rem;">🧪 КЛАСС: АЛХИМИК</strong><br><em style="color:#718096;font-size:0.75rem;">Изобретатель скрытых сил, токсинов и эликсиров.</em><div style="margin-top:10px;font-size:0.78rem;display:flex;flex-direction:column;gap:6px;"><div>🟢 <b>Катализатор:</b> Все зелья восстанавливают на +50% больше ХП.</div><div>⚡ <b>Кислотная колба:</b> Отравляет врага — 5 урона/ход × 3 хода.</div><div>🔍 <b>Специфика:</b> Доступ к уникальной тактике в событиях Диалог.</div></div></div>',
-    SCOUT: '<div><strong style="color:#68d391;font-size:0.95rem;">🏹 КЛАСС: СЛЕДОПЫТ</strong><br><em style="color:#718096;font-size:0.75rem;">Тень подземелья, бьющая точно в уязвимые точки.</em><div style="margin-top:10px;font-size:0.78rem;display:flex;flex-direction:column;gap:6px;"><div>🟢 <b>Чутьё на капканы:</b> Безошибочно замечает скрытые ловушки и засады.</div><div>⚡ <b>Прицельный выстрел:</b> 100% критическое попадание из скрытности.</div><div>🔍 <b>Специфика:</b> Колоссальное преимущество при действиях Скрытность.</div></div></div>'
+    SCOUT: '<div><strong style="color:#68d391;font-size:0.95rem;">🏹 КЛАСС: СЛЕДОПЫТ</strong><br><em style="color:#718096;font-size:0.75rem;">Тень подземелья, бьющая точно в уязвимые точки.</em><div style="margin-top:10px;font-size:0.78rem;display:flex;flex-direction:column;gap:6px;"><div>🟢 <b>Чутьё на капканы:</b> Безошибочно замечает скрытые ловушки и засады.</div><div>⚡ <b>Прицельный выстрел:</b> 100% критическое попадание из скрытности.</div><div>🔍 <b>Специфика:</b> Колоссальное преимущество при действиях Скрытность.</div></div></div>',
+    MAGE: '<div><strong style="color:#b794f4;font-size:0.95rem;">🧙 КЛАСС: МАГ</strong><br><em style="color:#718096;font-size:0.75rem;">Контролирует ману и ослабляет врагов.</em><div style="margin-top:10px;font-size:0.78rem;display:flex;flex-direction:column;gap:6px;"><div>🔮 <b>Ресурс:</b> Вместо выносливости использует ману.</div><div>⚡ <b>Техника:</b> Арканный разряд — высокий урон и ослабление.</div></div></div>'
 };
 
 var SensoryData = {
@@ -91,7 +93,8 @@ var player = {
     learnedPerks: [],
     abilityReady: true,
     shieldBlock: false,
-    poisonTurns: 0
+    poisonTurns: 0,
+    stamina: 0, maxStamina: 0, staminaCost: 10, usesMana: false
 };
 var player2 = {
     classKey: "", classTitle: "", lvl: 1, exp: 0,
@@ -102,17 +105,19 @@ var player2 = {
     learnedPerks: [],
     abilityReady: true,
     shieldBlock: false,
-    poisonTurns: 0
+    poisonTurns: 0,
+    stamina: 0, maxStamina: 0, staminaCost: 10, usesMana: false
 };
 var activeHeroIndex = 0;
 var coopSelectionStep = 0;
 var selectedHeroStatsTab = 0;
 var selectedHeroInvTab = 0;
 var combatTurnState = 'hero1';
+var coopComboCharge = 0;
 
 var bag = [];
 var eventIndex = 0;
-var totalEvents = 20;
+var totalEvents = 30;
 var enemy = { name: "", hp: 0, maxHp: 0, damage: 0, spriteKey: "", behavior: "normal", poisonTurns: 0 };
 var mapHistory = [];
 var minimapData = [];
@@ -1085,7 +1090,18 @@ function updateStats() {
     var xpFill = document.getElementById('xp-bar-fill');
     var xpText = document.getElementById('xp-bar-text');
     if (xpFill) xpFill.style.width = (xpPct * 100) + '%';
-    if (xpText) xpText.textContent = 'EXP ' + player.exp + '/100 · Ур.' + player.lvl;
+    if (xpText) xpText.textContent = 'EXP ' + Math.max(0, player.exp) + '/100 · Ур.' + Math.max(1, player.lvl);
+    var resHero = (isCoop && selectedHeroStatsTab === 1) ? player2 : player;
+    var resFill = document.getElementById('resource-bar-fill');
+    var resText = document.getElementById('resource-bar-text');
+    var resLabel = document.getElementById('resource-label');
+    var resPct = resHero.maxStamina > 0 ? Math.max(0, Math.min(1, resHero.stamina / resHero.maxStamina)) : 0;
+    if (resFill) {
+        resFill.style.width = (resPct * 100) + '%';
+        resFill.className = 'bar-fill ' + (resHero.usesMana ? 'mana-fill' : 'stamina-fill');
+    }
+    if (resText) resText.textContent = (resHero.stamina || 0) + '/' + (resHero.maxStamina || 0);
+    if (resLabel) resLabel.textContent = resHero.usesMana ? '🔮 Мана' : '🟢 Выносливость';
 
     // Gold & room
     var goldVal = document.getElementById('gold-val');
@@ -1107,7 +1123,7 @@ function updateStats() {
         'st-kills': player.kills,
         'st-atk': pToShow.damage,
         'st-spd': pToShow.speed,
-        'st-bonus': pToShow.bonus,
+        'st-bonus': pToShow.bonus + ' · ' + (pToShow.usesMana ? 'Мана' : 'Выносливость') + ': ' + pToShow.stamina + '/' + pToShow.maxStamina,
         'st-vamp': pToShow.vamp,
         'st-potions': player.potions + '/3',
         'doll-weapon': pToShow.weaponItem ? pToShow.weaponItem.name : 'Кулаки',
@@ -1445,7 +1461,8 @@ function initClassSelect() {
         { key: 'TANK', icon: '🛡️', name: 'Танк', sub: 'Защитник' },
         { key: 'BERSERK', icon: '🪓', name: 'Берсерк', sub: 'Разрушитель' },
         { key: 'ALCHEMIST', icon: '🧪', name: 'Алхимик', sub: 'Чародей' },
-        { key: 'SCOUT', icon: '🏹', name: 'Следопыт', sub: 'Охотник' }
+        { key: 'SCOUT', icon: '🏹', name: 'Следопыт', sub: 'Охотник' },
+        { key: 'MAGE', icon: '🧙', name: 'Маг', sub: 'Арканист' }
     ];
 
     classes.forEach(function (c) {
@@ -1469,7 +1486,7 @@ function previewClass(className) {
     logBox.innerHTML = '';
     log(ClassDescriptions[className], 'normal');
 
-    var classNames = { TANK: 'Танк', BERSERK: 'Берсерк', ALCHEMIST: 'Алхимик', SCOUT: 'Следопыт' };
+    var classNames = { TANK: 'Танк', BERSERK: 'Берсерк', ALCHEMIST: 'Алхимик', SCOUT: 'Следопыт', MAGE: 'Маг' };
     var previewSpriteId = (isCoop && coopSelectionStep === 2) ? 'player2-sprite' : 'player-sprite';
     var previewLabelId = (isCoop && coopSelectionStep === 2) ? 'player2-name-label' : 'player-name-label';
     var previewTheaterId = (isCoop && coopSelectionStep === 2) ? 'player2-theater' : 'player-theater';
@@ -1501,12 +1518,17 @@ function selectClass(className) {
     }
 
     var stats = {
-        TANK: { title: 'Танк', hp: 140, baseDamage: 14, speed: 3, bonus: 0 },
-        BERSERK: { title: 'Берсерк', hp: 90, baseDamage: 24, speed: 6, bonus: 0 },
-        ALCHEMIST: { title: 'Алхимик', hp: 100, baseDamage: 18, speed: 7, bonus: 2 },
-        SCOUT: { title: 'Следопыт', hp: 80, baseDamage: 15, speed: 11, bonus: 3 }
+        TANK: { title: 'Танк', hp: 140, baseDamage: 14, speed: 3, bonus: 0, stamina: 130, staminaCost: 8 },
+        BERSERK: { title: 'Берсерк', hp: 90, baseDamage: 24, speed: 6, bonus: 0, stamina: 100, staminaCost: 18 },
+        ALCHEMIST: { title: 'Алхимик', hp: 100, baseDamage: 18, speed: 7, bonus: 2, stamina: 110, staminaCost: 10 },
+        SCOUT: { title: 'Следопыт', hp: 80, baseDamage: 15, speed: 11, bonus: 3, stamina: 95, staminaCost: 14 },
+        MAGE: { title: 'Маг', hp: 75, baseDamage: 21, speed: 8, bonus: 3, stamina: 100, staminaCost: 12, usesMana: true }
     };
     var s = stats[className];
+    if (isCoop && coopSelectionStep === 2 && player.classKey === className) {
+        log('⛔ Нельзя выбирать одинаковые классы в кооперативе.', 'system');
+        return;
+    }
 
     if (isCoop && coopSelectionStep === 2) {
         player2.classKey = className;
@@ -1520,6 +1542,10 @@ function selectClass(className) {
         player2.abilityReady = true;
         player2.shieldBlock = false;
         player2.poisonTurns = 0;
+        player2.maxStamina = s.stamina;
+        player2.stamina = s.stamina;
+        player2.staminaCost = s.staminaCost;
+        player2.usesMana = !!s.usesMana;
 
         coopSelectionStep = 0;
 
@@ -1562,6 +1588,10 @@ function selectClass(className) {
         player.abilityReady = true;
         player.shieldBlock = false;
         player.poisonTurns = 0;
+        player.maxStamina = s.stamina;
+        player.stamina = s.stamina;
+        player.staminaCost = s.staminaCost;
+        player.usesMana = !!s.usesMana;
 
         coopSelectionStep = 2;
         initClassSelect();
@@ -1581,6 +1611,10 @@ function selectClass(className) {
         player.abilityReady = true;
         player.shieldBlock = false;
         player.poisonTurns = 0;
+        player.maxStamina = s.stamina;
+        player.stamina = s.stamina;
+        player.staminaCost = s.staminaCost;
+        player.usesMana = !!s.usesMana;
 
         var statsSel = document.getElementById('stats-hero-selector-wrap');
         var invSel = document.getElementById('inventory-hero-selector-wrap');
@@ -1779,8 +1813,8 @@ function resolvePathDiscussion() {
 }
 
 function runPathDiceDuel() {
-    var p1Roll = Math.floor(Math.random() * 20) + 1;
-    var p2Roll = Math.floor(Math.random() * 20) + 1;
+    var p1Roll = Math.floor(Math.random() * 20) + 1 + player.bonus;
+    var p2Roll = Math.floor(Math.random() * 20) + 1 + (isCoop ? player2.bonus : 0);
     var winner = p1Roll >= p2Roll ? 'p1' : 'p2';
     var pick = onlineCoop.pendingPathChoices[winner];
     log('🎲 Кубики крутятся... <span style="display:inline-block;animation:spin 0.4s linear 6;">🎲</span> P1=' + p1Roll + ', P2=' + p2Roll + '.', 'level-up');
@@ -1956,17 +1990,21 @@ function initCombat() {
     if (btnStats) btnStats.disabled = true;
     if (btnInv) btnInv.disabled = true;
 
-    // Pick monster
+    // Pick monster (regular / elite / boss each 5 rooms)
+    var isBossRoom = eventIndex % 10 === 0;
+    var isEliteRoom = !isBossRoom && eventIndex % 5 === 0;
     var m = MonsterPool[Math.floor(Math.random() * MonsterPool.length)];
     enemy = {
-        name: m.name,
-        spriteKey: m.k,
-        behavior: m.behavior,
-        hp: Math.floor((25 + eventIndex * 10) * m.hpMult),
-        damage: Math.floor((5 + eventIndex) * m.dmgMult),
-        poisonTurns: 0
+        name: (isBossRoom ? 'Владыка глубин' : (isEliteRoom ? 'Элитный ' + m.name : m.name)),
+        spriteKey: isBossRoom ? 'BOSS' : m.k,
+        behavior: isBossRoom ? 'magic' : m.behavior,
+        hp: Math.floor((25 + eventIndex * 10) * m.hpMult * (isBossRoom ? 2.4 : (isEliteRoom ? 1.6 : 1))),
+        damage: Math.floor((5 + eventIndex) * m.dmgMult * (isBossRoom ? 1.8 : (isEliteRoom ? 1.35 : 1))),
+        poisonTurns: 0,
+        tier: isBossRoom ? 'boss' : (isEliteRoom ? 'elite' : 'normal')
     };
     enemy.maxHp = enemy.hp;
+    coopComboCharge = 0;
 
     // Reset per-combat players state
     player.abilityReady = true;
@@ -2060,6 +2098,19 @@ function showCombatOptions() {
     );
     abilityBtn.id = 'btn-class-ability';
     if (!activeHero.abilityReady) abilityBtn.disabled = true;
+    if (isCoop && coopComboCharge >= 100) {
+        createActionBtn('💥 Совместная ульта (' + player.classTitle + ' + ' + player2.classTitle + ')', function () {
+            if (combatLocked) return;
+            combatLocked = true;
+            disableCombatButtons();
+            var comboDamage = Math.floor((player.damage + player2.damage) * 1.9);
+            enemy.hp -= comboDamage;
+            coopComboCharge = 0;
+            spawnFloatNumber(document.getElementById('enemy-theater'), comboDamage, 'dmg-crit');
+            log('🤝 Командная атака выполнена! Уникальная комбинация классов наносит ' + comboDamage + ' урона.', 'level-up');
+            setTimeout(function () { if (enemy.hp <= 0) resolveEnemyDeath(); else transitionToNextCombatPhase(); }, 900);
+        }, 'action-btn btn-danger');
+    }
     scheduleOnlineSync(20);
 }
 
@@ -2068,7 +2119,8 @@ function getClassAbilityDataFor(hero) {
         TANK: { name: '🛡️ Живой щит — прикрыть команду' },
         BERSERK: { name: '🪓 Безрассудный замах — 2.5× урон, −10 ХП' },
         ALCHEMIST: { name: '🧪 Кислотная колба — отравитель врага (5×3)' },
-        SCOUT: { name: '🏹 Прицельный выстрел — гарантированный крит' }
+        SCOUT: { name: '🏹 Прицельный выстрел — гарантированный крит' },
+        MAGE: { name: '🔮 Арканный разряд — мощный магический удар' }
     };
     return map[hero.classKey] || { name: '🔮 Техника класса' };
 }
@@ -2087,6 +2139,15 @@ function useClassAbilityFor(hero) {
     var isPlayer1 = (hero === player);
     var selfId = isPlayer1 ? 'player-theater' : 'player2-theater';
     var selfEl = document.getElementById(selfId);
+
+    var actionCost = (hero.staminaCost || 10) + (isHeavy ? 6 : 0);
+    if ((hero.stamina || 0) < actionCost) {
+        log('🪫 Недостаточно ресурса (' + (hero.usesMana ? 'маны' : 'выносливости') + ') для атаки.', 'system');
+        combatLocked = false;
+        showCombatOptions();
+        return;
+    }
+    hero.stamina = Math.max(0, hero.stamina - actionCost);
 
     switch (hero.classKey) {
         case 'TANK':
@@ -2140,6 +2201,14 @@ function useClassAbilityFor(hero) {
                 }, 800);
             }, 300);
             break;
+        case 'MAGE':
+            var mDmg = Math.floor(hero.damage * 2.4);
+            enemy.hp -= mDmg;
+            enemy.damage = Math.max(4, enemy.damage - 2);
+            spawnFloatNumber(document.getElementById('enemy-theater'), mDmg, 'dmg-crit');
+            log('🔮 <b>АРКАННЫЙ РАЗРЯД!</b> ' + mDmg + ' урона и ослабление врага на 1 ход.', 'combat');
+            setTimeout(function () { if (enemy.hp <= 0) resolveEnemyDeath(); else transitionToNextCombatPhase(); }, 800);
+            break;
 
         default:
             log('🔮 Техника применена.', 'level-up');
@@ -2191,6 +2260,7 @@ function playerAttack(isHeavy, hero) {
         }
 
         enemy.hp -= dmg;
+        coopComboCharge = Math.min(100, coopComboCharge + (isHeavy ? 18 : 12));
         triggerVFX(selfId, 'enemy-theater', isHeavy);
         spawnFloatNumber(document.getElementById('enemy-theater'), dmg, isHeavy ? 'dmg-crit' : 'dmg-enemy');
 
@@ -2329,6 +2399,8 @@ function enemyAttack() {
         var allDead = isCoop ? (player.hp <= 0 && player2.hp <= 0) : (player.hp <= 0);
         if (allDead) { gameOver(false); return; }
         
+        if (player.hp > 0) player.stamina = Math.min(player.maxStamina || 0, (player.stamina || 0) + 8);
+        if (isCoop && player2.hp > 0) player2.stamina = Math.min(player2.maxStamina || 0, (player2.stamina || 0) + 8);
         combatLocked = false;
         combatTurnState = (player.hp > 0) ? 'hero1' : 'hero2';
         showCombatOptions();
@@ -2359,11 +2431,17 @@ function resolveEnemyDeath() {
     var hasGreed1 = player.learnedPerks.some(function (p) { return p.id === 'greed'; });
     var hasGreed2 = isCoop && player2.learnedPerks.some(function (p) { return p.id === 'greed'; });
     var goldDrop = (hasGreed1 || hasGreed2) ? baseGold * 2 : baseGold;
+    var rewardMult = enemy.tier === 'boss' ? 3 : (enemy.tier === 'elite' ? 2 : 1);
+    goldDrop *= rewardMult;
     player.gold += goldDrop;
+    if (isCoop) player2.gold = player.gold;
     gameStats.goldEarned += goldDrop;
 
     log('💀 <b>' + enemy.name + '</b> повержен!', 'loot');
-    log('💰 +' + goldDrop + ' золота.', 'loot');
+    log('💰 +' + goldDrop + ' золота (общий кошелёк отряда).', 'loot');
+    if (enemy.tier === 'elite' || enemy.tier === 'boss') {
+        log('🎁 За победу над ' + (enemy.tier === 'boss' ? 'боссом' : 'элитой') + ' вы получаете усиленную награду: золото, опыт и шанс экипировки.', 'level-up');
+    }
 
     // End-of-combat revival for Coop Mode
     if (isCoop) {
@@ -2608,6 +2686,11 @@ function resolveLoot() {
     if (guardGuestReadOnly()) return;
     if (guardHostTurnOnly('Открыть сундук')) return;
     if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
+    if (Math.random() < 0.15) {
+        log('🦷 Мимик! Сундук оказался живым — быстрый бой начинается!', 'combat');
+        initCombat();
+        return;
+    }
     if (Math.random() < 0.30) {
         var goldBonus = Math.floor(Math.random() * 35) + 20;
         player.gold += goldBonus;
@@ -2617,6 +2700,9 @@ function resolveLoot() {
             player.potions++;
             log('🧪 И зелье исцеления!', 'loot');
         }
+        var target = (isCoop && player2.hp > 0 && Math.random() > 0.5) ? player2 : player;
+        target.stamina = Math.min(target.maxStamina || 0, (target.stamina || 0) + 25);
+        log('🧉 Найден тоник ресурса: +' + 25 + ' к ' + (target.usesMana ? 'мане' : 'выносливости') + ' у ' + target.classTitle + '.', 'loot');
         updateStats();
         offerNextStep();
         return;
@@ -2922,7 +3008,7 @@ function resetGameState() {
         speed: 0, bonus: 0, vamp: 0,
         gold: 0, potions: 0, kills: 0,
         weaponItem: null, armorItem: null, learnedPerks: [],
-        abilityReady: true, shieldBlock: false, poisonTurns: 0
+        abilityReady: true, shieldBlock: false, poisonTurns: 0, stamina:0, maxStamina:0, staminaCost:10, usesMana:false
     };
     
     player2 = {
@@ -2930,7 +3016,7 @@ function resetGameState() {
         hp: 0, maxHp: 0, baseDamage: 0, damage: 0,
         speed: 0, bonus: 0, vamp: 0,
         weaponItem: null, armorItem: null, learnedPerks: [],
-        abilityReady: true, shieldBlock: false, poisonTurns: 0
+        abilityReady: true, shieldBlock: false, poisonTurns: 0, stamina:0, maxStamina:0, staminaCost:10, usesMana:false
     };
     
     bag = [];
