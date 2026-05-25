@@ -134,7 +134,7 @@ var onlineCoop = {
     syncTimer: null,
     applyingSnapshot: false,
     processingRemoteCommand: false,
-    turn: 'p1',
+    turn: 'setup',
     uiState: 'none',
     uiData: null,
     pendingPathLogic: null,
@@ -179,7 +179,7 @@ function stopOnlineCoop() {
     onlineCoop.connected = false;
     onlineCoop.applyingSnapshot = false;
     onlineCoop.processingRemoteCommand = false;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'none';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -200,6 +200,25 @@ function normalizeOnlineToken(value) {
     return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
 }
 
+function extractOnlineToken(value) {
+    var raw = String(value || '').trim();
+    if (!raw) return '';
+    try { raw = decodeURIComponent(raw); } catch (e) { }
+    var normalized = normalizeOnlineToken(raw);
+    var directMatch = normalized.match(/DQ-[A-Z0-9]{8}/);
+    if (directMatch) return directMatch[0];
+    try {
+        var parsed = new URL(raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0 ? raw : ('https://' + raw));
+        var fromJoin = normalizeOnlineToken(parsed.searchParams.get('join'));
+        if (fromJoin) {
+            var joinMatch = fromJoin.match(/DQ-[A-Z0-9]{8}/);
+            if (joinMatch) return joinMatch[0];
+            return fromJoin;
+        }
+    } catch (e) { }
+    return normalized;
+}
+
 function setOnlineUiState(state, data) {
     if (!onlineCoop.enabled) return;
     onlineCoop.uiState = state || 'none';
@@ -208,23 +227,30 @@ function setOnlineUiState(state, data) {
 }
 
 function onlineTurnLabel() {
+    if (onlineCoop.turn === 'setup') return 'Подготовка';
     return onlineCoop.turn === 'p2' ? 'P2' : 'P1';
 }
 
 function canHostActInOnlineTurn() {
     if (!isOnlineHost() || !onlineCoop.connected) return true;
+    if (onlineCoop.turn === 'setup') return true;
     if (onlineCoop.processingRemoteCommand) return true;
     return onlineCoop.turn === 'p1';
 }
 
 function canGuestActInOnlineTurn() {
     if (!isOnlineGuest() || !onlineCoop.connected) return false;
+    if (onlineCoop.turn === 'setup') return false;
     return onlineCoop.turn === 'p2';
 }
 
 function advanceOnlineTurn() {
     if (!isOnlineHost() || !onlineCoop.connected) return;
-    onlineCoop.turn = (onlineCoop.turn === 'p1') ? 'p2' : 'p1';
+    if (onlineCoop.turn === 'setup') {
+        onlineCoop.turn = 'p1';
+    } else {
+        onlineCoop.turn = (onlineCoop.turn === 'p1') ? 'p2' : 'p1';
+    }
     scheduleOnlineSync(20);
 }
 
@@ -500,11 +526,6 @@ function renderGuestActionPanel() {
         createActionBtn('🗣️ Вызвать скрытые силы (Диалог)', function () {
             sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'social' });
         }, 'action-btn btn-purple');
-        if (onlineCoop.uiData && onlineCoop.uiData.canClassP1) {
-            createActionBtn('🔮 Техника P1 (' + player.classTitle + ')', function () {
-                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p1' });
-            }, 'action-btn btn-primary');
-        }
         if (onlineCoop.uiData && onlineCoop.uiData.canClassP2) {
             createActionBtn('🔮 Техника P2 (' + player2.classTitle + ')', function () {
                 sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p2' });
@@ -618,7 +639,7 @@ function handleHostCommand(packet) {
             var logic = onlineCoop.pendingPathLogic || 'normal';
             if (action === 'aggressive') worldMemory.playerIsRuthless = true;
             if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
-            if (action === 'class_p1') { handlePathOutcome('class', logic, player); return; }
+            if (action === 'class_p1') return;
             if (action === 'class_p2') { handlePathOutcome('class', logic, player2); return; }
             if (action === 'cautious' || action === 'aggressive' || action === 'social' || action === 'crazy') {
                 handlePathOutcome(action, logic);
@@ -739,7 +760,7 @@ function startOnlineHostLobby() {
     onlineCoop.enabled = true;
     onlineCoop.role = 'host';
     onlineCoop.connected = false;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'class_select_p1';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -794,7 +815,7 @@ function startOnlineGuestLobby(tokenInput) {
         return;
     }
 
-    var hostToken = normalizeOnlineToken(tokenInput);
+    var hostToken = extractOnlineToken(tokenInput);
     if (!hostToken) {
         log('⚠️ Пустой токен. Попробуйте ещё раз.', 'system');
         return;
@@ -812,7 +833,7 @@ function startOnlineGuestLobby(tokenInput) {
     onlineCoop.token = hostToken;
     onlineCoop.guestJoinToken = hostToken;
     onlineCoop.guestJoinAttempts = 0;
-    onlineCoop.turn = 'p1';
+    onlineCoop.turn = 'setup';
     onlineCoop.uiState = 'class_select_p1';
     onlineCoop.uiData = null;
     onlineCoop.pendingPathLogic = null;
@@ -843,7 +864,7 @@ function startOnlineGuestLobby(tokenInput) {
 }
 
 function promptOnlineJoin() {
-    var raw = window.prompt('Введите токен друга или вставьте ссылку приглашения:', '');
+    var raw = window.prompt('Введите токен друга (например DQ-2ZPPWRVH) или вставьте ссылку приглашения:', '');
     if (!raw) return;
     var token = raw;
     try {
@@ -861,7 +882,7 @@ function promptOnlineJoin() {
             });
         }
     } catch (e) { }
-    startOnlineGuestLobby(token);
+    startOnlineGuestLobby(extractOnlineToken(token));
 }
 
 function guardGuestReadOnly() {
@@ -1637,7 +1658,7 @@ function triggerRandomEvent() {
     if (hasP1Ability) {
         createActionBtn('🔮 Использовать технику (' + player.classTitle + ')', function () { handlePathOutcome('class', chosenLogic, player); }, 'action-btn btn-primary');
     }
-    if (hasP2Ability) {
+    if (hasP2Ability && !(isOnlineHost() && onlineCoop.connected)) {
         createActionBtn('🔮 Использовать технику (' + player2.classTitle + ')', function () { handlePathOutcome('class', chosenLogic, player2); }, 'action-btn btn-purple');
     }
     createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () { handlePathOutcome('crazy', chosenLogic); }, 'action-btn btn-danger');
