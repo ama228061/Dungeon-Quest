@@ -355,8 +355,6 @@ function buildOnlineSnapshot() {
         isCoop: isCoop,
         activeHeroIndex: activeHeroIndex,
         coopSelectionStep: coopSelectionStep,
-        selectedHeroStatsTab: selectedHeroStatsTab,
-        selectedHeroInvTab: selectedHeroInvTab,
         combatTurnState: combatTurnState,
         bag: bag,
         eventIndex: eventIndex,
@@ -578,8 +576,10 @@ function applyOnlineSnapshot(packet) {
     isCoop = !!s.isCoop;
     activeHeroIndex = s.activeHeroIndex || 0;
     coopSelectionStep = s.coopSelectionStep || 0;
-    selectedHeroStatsTab = s.selectedHeroStatsTab || 0;
-    selectedHeroInvTab = s.selectedHeroInvTab || 0;
+    if (!isCoop) {
+        selectedHeroStatsTab = 0;
+        selectedHeroInvTab = 0;
+    }
     combatTurnState = s.combatTurnState || 'hero1';
 
     bag = s.bag || [];
