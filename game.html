@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Dungeon Quest — Хроники Тьмы</title>
+    <meta name="description" content="Тёмное фэнтезийное подземелье. Выберите класс, исследуйте комнаты, сражайтесь с монстрами и покорите Дракона Теней.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Ambient particle background -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- ══ SETTINGS MODAL ══ -->
+<div id="settings-modal" class="overlay-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
+    <div class="modal-card">
+        <h2 class="modal-heading" id="settings-heading">⚙️ Настройки</h2>
+        <div class="setting-row">
+            <span>Боевые эффекты</span>
+            <button class="toggle-btn" id="toggle-vfx" onclick="toggleSetting('vfx')">ВКЛ</button>
+        </div>
+        <div class="setting-row">
+            <span>Анимация текста</span>
+            <button class="toggle-btn" id="toggle-anim" onclick="toggleSetting('anim')">ВКЛ</button>
+        </div>
+        <hr class="modal-divider">
+        <div class="setting-row">
+            <span>Сбросить сохранение</span>
+            <button class="toggle-btn danger" id="btn-clear-save" onclick="clearSave()">УДАЛИТЬ</button>
+        </div>
+        <button class="modal-close" id="btn-close-settings" onclick="closeSettings()">✕ Закрыть</button>
+    </div>
+</div>
+
+<!-- ══ ENDGAME OVERLAY ══ -->
+<div id="endgame-overlay" class="overlay-modal hidden" role="dialog" aria-modal="true">
+    <div class="endgame-card" id="endgame-card"></div>
+</div>
+
+<!-- ══ MAIN GAME CONTAINER ══ -->
+<div id="game-container">
+
+    <!-- TOP HUD -->
+    <header class="top-hud">
+        <div class="hud-hp-section" id="hud-hp-container" style="width: 100%;">
+            <div id="solo-hp-bar-wrap" style="width: 100%;">
+                <div class="hud-label">❤️ HP</div>
+                <div class="bar-track hp-track">
+                    <div class="bar-fill hp-fill" id="hp-bar-fill" style="width:100%"></div>
+                    <span class="bar-label" id="hp-bar-text">--/--</span>
+                </div>
+            </div>
+            <div id="coop-hp-bar-wrap" style="display:none; flex-direction:column; gap:4px; width:100%;">
+                <div style="display:flex; align-items:center; gap:6px; width: 100%;">
+                    <span class="hud-label" style="font-size:0.55rem; width:45px; text-overflow:ellipsis; overflow:hidden;" id="hp-p1-label">P1</span>
+                    <div class="bar-track hp-track" style="flex:1; height:8px;">
+                        <div class="bar-fill hp-fill" id="hp-bar-fill-p1" style="width:100%"></div>
+                        <span class="bar-label" id="hp-bar-text-p1" style="font-size:0.5rem; line-height:6px;">--/--</span>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; width: 100%;">
+                    <span class="hud-label" style="font-size:0.55rem; width:45px; text-overflow:ellipsis; overflow:hidden;" id="hp-p2-label">P2</span>
+                    <div class="bar-track hp-track" style="flex:1; height:8px;">
+                        <div class="bar-fill hp-fill" id="hp-bar-fill-p2" style="width:100%"></div>
+                        <span class="bar-label" id="hp-bar-text-p2" style="font-size:0.5rem; line-height:6px;">--/--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="hud-mid">
+            <div class="hud-stat gold-stat">💰 <span id="gold-val">0</span></div>
+            <div class="hud-stat">🚪 <span id="room-val">0/20</span></div>
+        </div>
+        <div class="hud-actions">
+            <button class="icon-btn" id="btn-settings" onclick="openSettings()" title="Настройки">⚙️</button>
+        </div>
+    </header>
+
+    <!-- XP BAR -->
+    <div class="xp-strip">
+        <div class="bar-track xp-track">
+            <div class="bar-fill xp-fill" id="xp-bar-fill" style="width:0%"></div>
+            <span class="bar-label xp-label" id="xp-bar-text">EXP 0/100 · Ур.1</span>
+        </div>
+    </div>
+
+    <!-- MINIMAP -->
+    <div class="minimap-wrap">
+        <div class="minimap-strip" id="minimap-strip"></div>
+    </div>
+
+    <!-- TABS NAV -->
+    <nav class="tabs-nav" id="tabs-nav">
+        <button id="tab-btn-adventure" class="tab-btn active-tab" onclick="switchTab('adventure')">🗺️ Поход</button>
+        <button id="tab-btn-stats" class="tab-btn" onclick="switchTab('stats')" disabled>👤 Герой</button>
+        <button id="tab-btn-inventory" class="tab-btn" onclick="switchTab('inventory')" disabled>🎒 Сумка <span id="bag-count-badge" class="bag-badge">0</span></button>
+    </nav>
+
+    <!-- ══ ADVENTURE TAB ══ -->
+    <div id="tab-content-adventure" class="game-tab-content active-content">
+
+        <!-- Theater of War -->
+        <div class="theater-container" id="theater-container">
+
+            <!-- Player Card -->
+            <div id="player-theater" class="theater-card player-card" style="visibility:hidden;">
+                <div class="sprite-wrap" id="player-sprite"></div>
+                <div class="status-row" id="player-status-row"></div>
+                <label id="player-name-label">Герой 1</label>
+                <div id="player-theater-vfx" class="vfx-flash"></div>
+            </div>
+
+            <!-- Player 2 Card (Coop Mode) -->
+            <div id="player2-theater" class="theater-card player-card" style="display:none;">
+                <div class="sprite-wrap" id="player2-sprite"></div>
+                <div class="status-row" id="player2-status-row"></div>
+                <label id="player2-name-label">Герой 2</label>
+                <div id="player2-theater-vfx" class="vfx-flash"></div>
+            </div>
+
+            <!-- VS Badge -->
+            <div class="vs-badge" id="vs-badge" style="display:none;">⚔️</div>
+
+            <!-- Enemy Card -->
+            <div id="enemy-theater" class="theater-card enemy-card" style="display:none;">
+                <div class="sprite-wrap" id="enemy-sprite"></div>
+                <div class="bar-track enemy-hp-track">
+                    <div class="bar-fill enemy-hp-fill" id="enemy-hp-fill" style="width:100%"></div>
+                </div>
+                <div class="status-row" id="enemy-status-row"></div>
+                <label id="enemy-name-label">Враг</label>
+                <div id="enemy-theater-vfx" class="vfx-flash"></div>
+            </div>
+
+        </div>
+
+        <!-- Potion Quick-Use Bar -->
+        <div class="potion-quickbar" id="potion-quickbar" style="display:none;">
+            <button class="potion-btn" id="potion-use-btn" onclick="usePotion()">
+                🧪 Выпить зелье · <span id="potion-count-display">0</span>/3
+            </button>
+        </div>
+
+        <!-- Combat Log -->
+        <div id="log-box" role="log" aria-live="polite" aria-label="Журнал событий"></div>
+
+        <!-- Action Buttons -->
+        <div id="action-buttons" role="group" aria-label="Действия игрока"></div>
+
+    </div>
+
+    <!-- ══ HERO STATS TAB ══ -->
+    <div id="tab-content-stats" class="game-tab-content">
+        <div class="hero-selector-tab-wrap" id="stats-hero-selector-wrap" style="display:none; justify-content:center; gap:8px; margin-bottom:8px;">
+            <button class="tab-btn active-tab" id="stats-toggle-p1" onclick="toggleStatsHero(0)">Герой 1</button>
+            <button class="tab-btn" id="stats-toggle-p2" onclick="toggleStatsHero(1)">Герой 2</button>
+        </div>
+        <div class="stats-grid">
+            <div class="stats-block">
+                <div class="block-title">Персонаж</div>
+                <div class="stat-row"><span class="stat-lbl">Класс</span><span id="st-class" class="stat-val">-</span></div>
+                <div class="stat-row"><span class="stat-lbl">Уровень</span><span id="st-lvl" class="stat-val">1</span></div>
+                <div class="stat-row"><span class="stat-lbl">Здоровье</span><span id="st-hp" class="stat-val">-</span></div>
+                <div class="stat-row"><span class="stat-lbl">Опыт</span><span id="st-exp" class="stat-val">0/100</span></div>
+                <div class="stat-row"><span class="stat-lbl">Золото</span><span id="st-gold" class="stat-val gold-text">0</span></div>
+                <div class="stat-row"><span class="stat-lbl">Убито врагов</span><span id="st-kills" class="stat-val">0</span></div>
+            </div>
+            <div class="stats-block">
+                <div class="block-title">Боевые</div>
+                <div class="stat-row"><span class="stat-lbl">Атака</span><span id="st-atk" class="stat-val">-</span></div>
+                <div class="stat-row"><span class="stat-lbl">Скорость</span><span id="st-spd" class="stat-val">-</span></div>
+                <div class="stat-row"><span class="stat-lbl">Удача</span><span id="st-bonus" class="stat-val">-</span></div>
+                <div class="stat-row"><span class="stat-lbl">Вампиризм</span><span id="st-vamp" class="stat-val">0</span></div>
+                <div class="stat-row"><span class="stat-lbl">Зелья</span><span id="st-potions" class="stat-val">0/3</span></div>
+            </div>
+        </div>
+        <div class="doll-block">
+            <div class="block-title">Дары Подземелья</div>
+            <div id="active-perks-list"><div class="empty-hint">Способности не изучены.</div></div>
+        </div>
+    </div>
+
+    <!-- ══ INVENTORY TAB ══ -->
+    <div id="tab-content-inventory" class="game-tab-content">
+        <div class="hero-selector-tab-wrap" id="inventory-hero-selector-wrap" style="display:none; justify-content:center; gap:8px; margin-bottom:8px;">
+            <button class="tab-btn active-tab" id="inv-toggle-p1" onclick="toggleInventoryHero(0)">Экипирует: Герой 1</button>
+            <button class="tab-btn" id="inv-toggle-p2" onclick="toggleInventoryHero(1)">Экипирует: Герой 2</button>
+        </div>
+        <div class="inventory-layout">
+            <div class="doll-block doll-side">
+                <div id="doll-avatar" class="doll-avatar"></div>
+                <div class="equip-slot">
+                    <div class="slot-icon">⚔️</div>
+                    <div>
+                        <div class="slot-lbl">Оружие</div>
+                        <div class="slot-val" id="doll-weapon">Кулаки</div>
+                    </div>
+                </div>
+                <div class="equip-slot">
+                    <div class="slot-icon">🛡️</div>
+                    <div>
+                        <div class="slot-lbl">Броня</div>
+                        <div class="slot-val" id="doll-armor">Ткань</div>
+                    </div>
+                </div>
+                <div class="equip-slot">
+                    <div class="slot-icon">🧪</div>
+                    <div>
+                        <div class="slot-lbl">Зелья</div>
+                        <div class="slot-val" id="inv-potion-slot">0/3</div>
+                    </div>
+                </div>
+            </div>
+            <div class="stats-block">
+                <div class="block-title">Содержимое сумки</div>
+                <div id="items-list"></div>
+            </div>
+        </div>
+    </div>
+
+</div><!-- end #game-container -->
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
