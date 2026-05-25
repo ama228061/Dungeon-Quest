@@ -543,6 +543,18 @@ function renderGuestActionPanel() {
         return;
     }
 
+    if (onlineCoop.uiState === 'perk_choice') {
+        var perkData = onlineCoop.uiData || {};
+        if (perkData.heroIdx === 1 && Array.isArray(perkData.perks) && perkData.perks.length) {
+            perkData.perks.forEach(function (perk) {
+                createActionBtn(perk.name, function () {
+                    sendOnlinePacket({ type: 'cmd', cmd: 'perk_pick', perkId: perk.id });
+                }, 'action-btn btn-purple');
+            });
+            return;
+        }
+    }
+
     if (!isGuestTurn) {
         var waitExploreBtn = createActionBtn('🧭 Ход хоста: ' + onlineTurnLabel(), function () { }, 'action-btn btn-muted');
         waitExploreBtn.disabled = true;
@@ -676,6 +688,16 @@ function handleHostCommand(packet) {
             if (onlineCoop.uiState !== 'path_discussion' || !onlineCoop.pathDiscussion) return;
             onlineCoop.pathDiscussion.p2 = packet.value === 'agree' ? 'agree' : 'disagree';
             resolvePathDiscussion();
+            return;
+        }
+
+        if (packet.cmd === 'perk_pick') {
+            if (onlineCoop.uiState !== 'perk_choice' || !onlineCoop.uiData || onlineCoop.uiData.heroIdx !== 1) return;
+            var perks = Array.isArray(onlineCoop.uiData.perks) ? onlineCoop.uiData.perks : [];
+            var chosen = perks.find(function (perk) { return perk.id === packet.perkId; });
+            if (!chosen) return;
+            var synthetic = document.getElementById('perk-select-' + chosen.id);
+            if (synthetic && typeof synthetic.onclick === 'function') synthetic.onclick();
             return;
         }
 
@@ -2438,6 +2460,31 @@ function openPerkSelectionForHero(heroIdx) {
     log('🔮 Выберите дар подземелья для <b>' + heroToUpgrade.classTitle + '</b>:', 'story');
     actionButtons.innerHTML = '';
 
+    function applyPerkChoice(perk) {
+        if (perk.id === 'vamp') heroToUpgrade.vamp += 4;
+        if (perk.id === 'heavy') heroToUpgrade.baseDamage += 6;
+        if (perk.id === 'thick') { heroToUpgrade.maxHp += 25; heroToUpgrade.hp += 25; }
+        if (perk.id === 'luck') heroToUpgrade.bonus += 3;
+        if (perk.id === 'speedy') heroToUpgrade.speed += 4;
+        if (perk.id === 'brew' && player.potions < 3) player.potions++;
+
+        heroToUpgrade.learnedPerks.push(perk);
+        renderPerksList();
+        log('<b>' + heroToUpgrade.classTitle + '</b> запечатлел в душе: <b>' + perk.name + '</b>', 'level-up');
+        updateStats();
+
+        if (isCoop && heroIdx === 0) {
+            openPerkSelectionForHero(1);
+        } else {
+            if (isOnlineHost()) setOnlineUiState('none');
+            offerNextStep();
+        }
+    }
+
+    if (isOnlineHost() && heroIdx === 1) {
+        setOnlineUiState('perk_choice', { heroIdx: 1, perks: selected });
+    }
+
     selected.forEach(function (p) {
         var btn = document.createElement('button');
         btn.className = 'perk-select-card';
@@ -2446,23 +2493,7 @@ function openPerkSelectionForHero(heroIdx) {
             '<div class="perk-select-name">' + p.name + '</div>' +
             '<div class="perk-select-desc">' + p.desc + '</div>';
         btn.onclick = function () {
-            if (p.id === 'vamp') heroToUpgrade.vamp += 4;
-            if (p.id === 'heavy') heroToUpgrade.baseDamage += 6;
-            if (p.id === 'thick') { heroToUpgrade.maxHp += 25; heroToUpgrade.hp += 25; }
-            if (p.id === 'luck') heroToUpgrade.bonus += 3;
-            if (p.id === 'speedy') heroToUpgrade.speed += 4;
-            if (p.id === 'brew' && player.potions < 3) player.potions++;
-
-            heroToUpgrade.learnedPerks.push(p);
-            renderPerksList();
-            log('<b>' + heroToUpgrade.classTitle + '</b> запечатлел в душе: <b>' + p.name + '</b>', 'level-up');
-            updateStats();
-
-            if (isCoop && heroIdx === 0) {
-                openPerkSelectionForHero(1);
-            } else {
-                offerNextStep();
-            }
+            applyPerkChoice(p);
         };
         actionButtons.appendChild(btn);
     });
