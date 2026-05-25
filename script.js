@@ -633,7 +633,7 @@ function renderDiscussionUi(isGuestView) {
     }, 'action-btn btn-muted');
     createActionBtn('✅ Согласен', function () {
         if (isGuestView) sendOnlinePacket({ type: 'cmd', cmd: 'discussion_vote', vote: 'agree' });
-        else resolvePathOutcomeByWinner('p1');
+        else resolvePathOutcomeByWinner('p1', true);
     }, 'action-btn btn-success');
     createActionBtn('❌ Не согласен', function () {
         if (isGuestView) sendOnlinePacket({ type: 'cmd', cmd: 'discussion_vote', vote: 'disagree' });
@@ -748,7 +748,9 @@ function handleHostCommand(packet) {
             if (!onlineCoop.uiData.votes) onlineCoop.uiData.votes = {};
             onlineCoop.uiData.votes.p2 = packet.vote;
             if (packet.vote === 'agree') {
-                resolvePathOutcomeByWinner('p1');
+                resolvePathOutcomeByWinner('p1', true);
+                scheduleOnlineSync(20);
+                return;
             }
             scheduleOnlineSync(20);
             renderDiscussionUi(false);
@@ -1810,15 +1812,21 @@ function tryResolvePathChoiceConsensus() {
     renderDiscussionUi(false);
 }
 
-function resolvePathOutcomeByWinner(winner) {
+function resolvePathOutcomeByWinner(winner, bypassTurnGuard) {
     if (!isOnlineHost() || !onlineCoop.uiData) return;
     var logic = onlineCoop.pendingPathLogic || 'normal';
     var action = winner === 'p2' ? onlineCoop.uiData.p2Action : onlineCoop.uiData.p1Action;
     if (action === 'aggressive') worldMemory.playerIsRuthless = true;
     if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
-    if (action === 'class_p2') return handlePathOutcome('class', logic, player2);
-    if (action === 'class_p1') return handlePathOutcome('class', logic, player);
-    return handlePathOutcome(action, logic);
+    var prevRemoteFlag = onlineCoop.processingRemoteCommand;
+    if (bypassTurnGuard) onlineCoop.processingRemoteCommand = true;
+    try {
+        if (action === 'class_p2') return handlePathOutcome('class', logic, player2);
+        if (action === 'class_p1') return handlePathOutcome('class', logic, player);
+        return handlePathOutcome(action, logic);
+    } finally {
+        onlineCoop.processingRemoteCommand = prevRemoteFlag;
+    }
 }
 
 function runDiscussionDiceRoll() {
