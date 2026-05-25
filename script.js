@@ -1768,12 +1768,19 @@ function runPathDiceDuel() {
 
 function applyResolvedPathAction(action) {
     var logic = onlineCoop.pendingPathLogic || 'normal';
+    var shouldBypassHostTurnGuard = isOnlineHost() && onlineCoop.connected && onlineCoop.turn === 'p2';
+    var prevProcessingRemoteCommand = onlineCoop.processingRemoteCommand;
     onlineCoop.pathDiscussion = null;
     if (action === 'aggressive') worldMemory.playerIsRuthless = true;
     if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
-    if (action === 'class_p2') return handlePathOutcome('class', logic, player2);
-    if (action === 'class_p1') return handlePathOutcome('class', logic, player);
-    handlePathOutcome(action, logic);
+    if (shouldBypassHostTurnGuard) onlineCoop.processingRemoteCommand = true;
+    try {
+        if (action === 'class_p2') return handlePathOutcome('class', logic, player2);
+        if (action === 'class_p1') return handlePathOutcome('class', logic, player);
+        handlePathOutcome(action, logic);
+    } finally {
+        onlineCoop.processingRemoteCommand = prevProcessingRemoteCommand;
+    }
 }
 
 function handlePathOutcome(action, logic, hero) {
