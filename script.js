@@ -3072,6 +3072,13 @@ function startDungeonGame() {
     } else {
         showModeSelect();
     }
+
+    setTimeout(function () {
+        if (!actionButtons || isOnlineGuest()) return;
+        if (!actionButtons.children.length && !player.classKey) {
+            showModeSelect();
+        }
+    }, 50);
 }
 
 if (document.readyState === 'loading') {
