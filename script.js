@@ -1674,6 +1674,9 @@ function triggerRandomEvent() {
     // Tech options for living classes
     var hasP1Ability = player.hp > 0;
     var hasP2Ability = isCoop && player2.hp > 0;
+    if (isOnlineHost() && onlineCoop.connected && onlineCoop.turn !== 'p1') {
+        onlineCoop.turn = 'p1';
+    }
     setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability });
 
     actionButtons.innerHTML = '';
