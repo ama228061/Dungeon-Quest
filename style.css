@@ -228,6 +228,14 @@ body {
     background: linear-gradient(90deg, #c53030, #fc8181);
     transition: width 0.4s ease;
 }
+.stamina-fill {
+    background: linear-gradient(90deg, #2f855a, #68d391);
+    box-shadow: 0 0 8px rgba(104, 211, 145, 0.45);
+}
+.mana-fill {
+    background: linear-gradient(90deg, #6b46c1, #b794f4);
+    box-shadow: 0 0 8px rgba(183, 148, 244, 0.45);
+}
 
 /* Bar labels */
 .bar-label {

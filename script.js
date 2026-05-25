@@ -1090,7 +1090,18 @@ function updateStats() {
     var xpFill = document.getElementById('xp-bar-fill');
     var xpText = document.getElementById('xp-bar-text');
     if (xpFill) xpFill.style.width = (xpPct * 100) + '%';
-    if (xpText) xpText.textContent = 'EXP ' + player.exp + '/100 · Ур.' + player.lvl;
+    if (xpText) xpText.textContent = 'EXP ' + Math.max(0, player.exp) + '/100 · Ур.' + Math.max(1, player.lvl);
+    var resHero = (isCoop && selectedHeroStatsTab === 1) ? player2 : player;
+    var resFill = document.getElementById('resource-bar-fill');
+    var resText = document.getElementById('resource-bar-text');
+    var resLabel = document.getElementById('resource-label');
+    var resPct = resHero.maxStamina > 0 ? Math.max(0, Math.min(1, resHero.stamina / resHero.maxStamina)) : 0;
+    if (resFill) {
+        resFill.style.width = (resPct * 100) + '%';
+        resFill.className = 'bar-fill ' + (resHero.usesMana ? 'mana-fill' : 'stamina-fill');
+    }
+    if (resText) resText.textContent = (resHero.stamina || 0) + '/' + (resHero.maxStamina || 0);
+    if (resLabel) resLabel.textContent = resHero.usesMana ? '🔮 Мана' : '🟢 Выносливость';
 
     // Gold & room
     var goldVal = document.getElementById('gold-val');
@@ -1802,8 +1813,8 @@ function resolvePathDiscussion() {
 }
 
 function runPathDiceDuel() {
-    var p1Roll = Math.floor(Math.random() * 20) + 1;
-    var p2Roll = Math.floor(Math.random() * 20) + 1;
+    var p1Roll = Math.floor(Math.random() * 20) + 1 + player.bonus;
+    var p2Roll = Math.floor(Math.random() * 20) + 1 + (isCoop ? player2.bonus : 0);
     var winner = p1Roll >= p2Roll ? 'p1' : 'p2';
     var pick = onlineCoop.pendingPathChoices[winner];
     log('🎲 Кубики крутятся... <span style="display:inline-block;animation:spin 0.4s linear 6;">🎲</span> P1=' + p1Roll + ', P2=' + p2Roll + '.', 'level-up');
@@ -2128,6 +2139,15 @@ function useClassAbilityFor(hero) {
     var isPlayer1 = (hero === player);
     var selfId = isPlayer1 ? 'player-theater' : 'player2-theater';
     var selfEl = document.getElementById(selfId);
+
+    var actionCost = (hero.staminaCost || 10) + (isHeavy ? 6 : 0);
+    if ((hero.stamina || 0) < actionCost) {
+        log('🪫 Недостаточно ресурса (' + (hero.usesMana ? 'маны' : 'выносливости') + ') для атаки.', 'system');
+        combatLocked = false;
+        showCombatOptions();
+        return;
+    }
+    hero.stamina = Math.max(0, hero.stamina - actionCost);
 
     switch (hero.classKey) {
         case 'TANK':
@@ -2681,6 +2701,11 @@ function resolveLoot() {
     if (guardGuestReadOnly()) return;
     if (guardHostTurnOnly('Открыть сундук')) return;
     if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
+    if (Math.random() < 0.15) {
+        log('🦷 Мимик! Сундук оказался живым — быстрый бой начинается!', 'combat');
+        initCombat();
+        return;
+    }
     if (Math.random() < 0.30) {
         var goldBonus = Math.floor(Math.random() * 35) + 20;
         player.gold += goldBonus;
@@ -2690,6 +2715,9 @@ function resolveLoot() {
             player.potions++;
             log('🧪 И зелье исцеления!', 'loot');
         }
+        var target = (isCoop && player2.hp > 0 && Math.random() > 0.5) ? player2 : player;
+        target.stamina = Math.min(target.maxStamina || 0, (target.stamina || 0) + 25);
+        log('🧉 Найден тоник ресурса: +' + 25 + ' к ' + (target.usesMana ? 'мане' : 'выносливости') + ' у ' + target.classTitle + '.', 'loot');
         updateStats();
         offerNextStep();
         return;
@@ -2995,7 +3023,7 @@ function resetGameState() {
         speed: 0, bonus: 0, vamp: 0,
         gold: 0, potions: 0, kills: 0,
         weaponItem: null, armorItem: null, learnedPerks: [],
-        abilityReady: true, shieldBlock: false, poisonTurns: 0
+        abilityReady: true, shieldBlock: false, poisonTurns: 0, stamina:0, maxStamina:0, staminaCost:10, usesMana:false
     };
     
     player2 = {
@@ -3003,7 +3031,7 @@ function resetGameState() {
         hp: 0, maxHp: 0, baseDamage: 0, damage: 0,
         speed: 0, bonus: 0, vamp: 0,
         weaponItem: null, armorItem: null, learnedPerks: [],
-        abilityReady: true, shieldBlock: false, poisonTurns: 0
+        abilityReady: true, shieldBlock: false, poisonTurns: 0, stamina:0, maxStamina:0, staminaCost:10, usesMana:false
     };
     
     bag = [];
