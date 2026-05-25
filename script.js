@@ -124,6 +124,446 @@ var combatLocked = false;
 
 var logBox, actionButtons;
 
+var onlineCoop = {
+    enabled: false,
+    role: 'none', // host | guest
+    peer: null,
+    conn: null,
+    token: '',
+    connected: false,
+    syncTimer: null,
+    applyingSnapshot: false
+};
+
+function supportsOnlineCoop() {
+    return typeof Peer !== 'undefined';
+}
+
+function isOnlineHost() {
+    return onlineCoop.enabled && onlineCoop.role === 'host';
+}
+
+function isOnlineGuest() {
+    return onlineCoop.enabled && onlineCoop.role === 'guest';
+}
+
+function isOnlineConnOpen() {
+    return !!(onlineCoop.conn && onlineCoop.conn.open);
+}
+
+function stopOnlineCoop() {
+    if (onlineCoop.syncTimer) {
+        clearTimeout(onlineCoop.syncTimer);
+        onlineCoop.syncTimer = null;
+    }
+    try { if (onlineCoop.conn) onlineCoop.conn.close(); } catch (e) { }
+    try { if (onlineCoop.peer) onlineCoop.peer.destroy(); } catch (e) { }
+
+    onlineCoop.enabled = false;
+    onlineCoop.role = 'none';
+    onlineCoop.peer = null;
+    onlineCoop.conn = null;
+    onlineCoop.token = '';
+    onlineCoop.connected = false;
+    onlineCoop.applyingSnapshot = false;
+}
+
+function makeOnlineToken() {
+    var alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    var out = 'DQ-';
+    for (var i = 0; i < 8; i++) {
+        out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return out.toLowerCase();
+}
+
+function normalizeOnlineToken(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function sendOnlinePacket(packet) {
+    if (!isOnlineConnOpen()) return;
+    try { onlineCoop.conn.send(packet); } catch (e) { }
+}
+
+function buildOnlineSnapshot() {
+    return {
+        isCoop: isCoop,
+        activeHeroIndex: activeHeroIndex,
+        coopSelectionStep: coopSelectionStep,
+        selectedHeroStatsTab: selectedHeroStatsTab,
+        selectedHeroInvTab: selectedHeroInvTab,
+        combatTurnState: combatTurnState,
+        bag: bag,
+        eventIndex: eventIndex,
+        totalEvents: totalEvents,
+        enemy: enemy,
+        mapHistory: mapHistory,
+        minimapData: minimapData,
+        worldMemory: worldMemory,
+        gameStats: gameStats,
+        inCombat: inCombat,
+        combatLocked: combatLocked,
+        player: player,
+        player2: player2
+    };
+}
+
+function sendOnlineSnapshot() {
+    if (!isOnlineHost() || !isOnlineConnOpen()) return;
+    sendOnlinePacket({
+        type: 'sync',
+        state: buildOnlineSnapshot(),
+        logHtml: logBox ? logBox.innerHTML : ''
+    });
+}
+
+function scheduleOnlineSync(delayMs) {
+    if (!isOnlineHost()) return;
+    if (onlineCoop.syncTimer) clearTimeout(onlineCoop.syncTimer);
+    onlineCoop.syncTimer = setTimeout(function () {
+        onlineCoop.syncTimer = null;
+        sendOnlineSnapshot();
+    }, typeof delayMs === 'number' ? delayMs : 80);
+}
+
+function refreshGuestViewFromSnapshot() {
+    if (!isOnlineGuest()) return;
+
+    var pSprite = document.getElementById('player-sprite');
+    var pName = document.getElementById('player-name-label');
+    var pCard = document.getElementById('player-theater');
+    if (pSprite) pSprite.innerHTML = player.classKey ? (Sprites[player.classKey] || '') : '';
+    if (pName) pName.textContent = player.classTitle || 'Герой 1';
+    if (pCard) pCard.style.visibility = player.classKey ? 'visible' : 'hidden';
+
+    var p2Sprite = document.getElementById('player2-sprite');
+    var p2Name = document.getElementById('player2-name-label');
+    var p2Card = document.getElementById('player2-theater');
+    if (p2Sprite) p2Sprite.innerHTML = player2.classKey ? (Sprites[player2.classKey] || '') : '';
+    if (p2Name) p2Name.textContent = player2.classTitle || 'Герой 2';
+    if (p2Card) p2Card.style.display = isCoop ? 'flex' : 'none';
+
+    var eSprite = document.getElementById('enemy-sprite');
+    var eCard = document.getElementById('enemy-theater');
+    if (eSprite) {
+        var eKey = enemy && enemy.spriteKey ? enemy.spriteKey : 'UNKNOWN';
+        eSprite.innerHTML = Sprites[eKey] || Sprites.UNKNOWN;
+    }
+    if (eCard) {
+        if (enemy && enemy.name) {
+            eCard.style.display = 'flex';
+            eCard.style.visibility = 'visible';
+        } else {
+            eCard.style.display = 'none';
+        }
+    }
+
+    adjustTheaterLayout(player.classKey ? 'battle' : 'single');
+
+    var statsSel = document.getElementById('stats-hero-selector-wrap');
+    var invSel = document.getElementById('inventory-hero-selector-wrap');
+    if (statsSel) statsSel.style.display = isCoop ? 'flex' : 'none';
+    if (invSel) invSel.style.display = isCoop ? 'flex' : 'none';
+}
+
+function renderGuestActionPanel() {
+    if (!isOnlineGuest() || !actionButtons) return;
+
+    actionButtons.innerHTML = '';
+
+    if (!onlineCoop.connected) {
+        var waitConnBtn = createActionBtn('⏳ Ожидание соединения с хостом...', function () { }, 'action-btn btn-muted');
+        waitConnBtn.disabled = true;
+        createActionBtn('↩️ Отмена и назад', function () {
+            stopOnlineCoop();
+            resetGameState();
+            showModeSelect();
+        }, 'action-btn btn-muted');
+        return;
+    }
+
+    if (coopSelectionStep === 2 && !player2.classKey) {
+        var classes = [
+            { key: 'TANK', text: '🛡️ Танк' },
+            { key: 'BERSERK', text: '🪓 Берсерк' },
+            { key: 'ALCHEMIST', text: '🧪 Алхимик' },
+            { key: 'SCOUT', text: '🏹 Следопыт' }
+        ];
+        classes.forEach(function (entry) {
+            createActionBtn(entry.text, function () {
+                sendOnlinePacket({ type: 'cmd', cmd: 'select_class', classKey: entry.key });
+            }, 'action-btn btn-primary');
+        });
+        return;
+    }
+
+    if (!player.classKey) {
+        var waitClassBtn = createActionBtn('⏳ Хост готовит поход...', function () { }, 'action-btn btn-muted');
+        waitClassBtn.disabled = true;
+        return;
+    }
+
+    if (!inCombat) {
+        var waitExploreBtn = createActionBtn('🧭 Ход хоста: исследование подземелья', function () { }, 'action-btn btn-muted');
+        waitExploreBtn.disabled = true;
+        return;
+    }
+
+    if (combatTurnState !== 'hero2' || player2.hp <= 0 || combatLocked) {
+        var waitTurnBtn = createActionBtn('⏳ Ожидание вашего боевого хода...', function () { }, 'action-btn btn-muted');
+        waitTurnBtn.disabled = true;
+        return;
+    }
+
+    createActionBtn('⚔️ Молниеносный выпад (P2)', function () {
+        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_attack', heavy: false });
+    }, 'action-btn btn-primary');
+
+    createActionBtn('🎲 Мощный удар (P2)', function () {
+        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_attack', heavy: true });
+    }, 'action-btn btn-danger');
+
+    var abilityData = getClassAbilityDataFor(player2);
+    var abilityBtn = createActionBtn(abilityData.name, function () {
+        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_ability' });
+    }, 'action-btn btn-ability');
+    abilityBtn.disabled = !player2.abilityReady;
+
+    var canPotion = player.potions > 0 && player2.hp > 0 && player2.hp < player2.maxHp;
+    var potionBtn = createActionBtn('🧪 Выпить зелье (P2)', function () {
+        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_potion' });
+    }, 'action-btn btn-success');
+    potionBtn.disabled = !canPotion;
+}
+
+function applyOnlineSnapshot(packet) {
+    if (!isOnlineGuest() || !packet || !packet.state) return;
+
+    var s = packet.state;
+    onlineCoop.applyingSnapshot = true;
+
+    isCoop = !!s.isCoop;
+    activeHeroIndex = s.activeHeroIndex || 0;
+    coopSelectionStep = s.coopSelectionStep || 0;
+    selectedHeroStatsTab = s.selectedHeroStatsTab || 0;
+    selectedHeroInvTab = s.selectedHeroInvTab || 0;
+    combatTurnState = s.combatTurnState || 'hero1';
+
+    bag = s.bag || [];
+    eventIndex = s.eventIndex || 0;
+    totalEvents = s.totalEvents || 20;
+    enemy = s.enemy || enemy;
+    mapHistory = s.mapHistory || [];
+    minimapData = s.minimapData || [];
+    worldMemory = s.worldMemory || worldMemory;
+    gameStats = s.gameStats || gameStats;
+    inCombat = !!s.inCombat;
+    combatLocked = !!s.combatLocked;
+    player = s.player || player;
+    player2 = s.player2 || player2;
+
+    if (typeof packet.logHtml === 'string' && logBox) {
+        logBox.innerHTML = packet.logHtml;
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    refreshGuestViewFromSnapshot();
+    updateEnemyHpBar();
+    renderStatusEffects();
+    renderMinimap();
+    updateStats();
+    renderPerksList();
+
+    onlineCoop.applyingSnapshot = false;
+    renderGuestActionPanel();
+}
+
+function handleHostCommand(packet) {
+    if (!isOnlineHost() || !packet) return;
+    if (!isCoop) return;
+
+    if (packet.cmd === 'select_class') {
+        if (coopSelectionStep === 2 && !player2.classKey && packet.classKey) {
+            selectClass(packet.classKey);
+        }
+        return;
+    }
+
+    if (!inCombat || combatTurnState !== 'hero2' || combatLocked || player2.hp <= 0) {
+        return;
+    }
+
+    if (packet.cmd === 'hero2_attack') {
+        playerAttack(!!packet.heavy, player2);
+        return;
+    }
+    if (packet.cmd === 'hero2_ability') {
+        useClassAbilityFor(player2);
+        return;
+    }
+    if (packet.cmd === 'hero2_potion') {
+        usePotionForHero(1);
+    }
+}
+
+function bindOnlineConnection(conn) {
+    onlineCoop.conn = conn;
+
+    conn.on('open', function () {
+        onlineCoop.connected = true;
+        if (isOnlineHost()) {
+            log('🔗 Друг подключился к вашему кооперативу!', 'level-up');
+            sendOnlineSnapshot();
+        } else if (isOnlineGuest()) {
+            log('🔗 Подключено! Ожидание состояния от хоста...', 'level-up');
+            sendOnlinePacket({ type: 'request_sync' });
+            renderGuestActionPanel();
+        }
+    });
+
+    conn.on('data', function (packet) {
+        if (!packet || typeof packet !== 'object') return;
+
+        if (isOnlineHost()) {
+            if (packet.type === 'request_sync') sendOnlineSnapshot();
+            if (packet.type === 'cmd') handleHostCommand(packet);
+            return;
+        }
+
+        if (isOnlineGuest() && packet.type === 'sync') {
+            applyOnlineSnapshot(packet);
+        }
+    });
+
+    conn.on('close', function () {
+        onlineCoop.connected = false;
+        onlineCoop.conn = null;
+        if (isOnlineHost()) {
+            log('⚠️ Друг отключился. Можно продолжать локально или создать новый токен.', 'system');
+        } else if (isOnlineGuest()) {
+            log('⚠️ Соединение с хостом закрыто.', 'system');
+            renderGuestActionPanel();
+        }
+    });
+
+    conn.on('error', function () {
+        onlineCoop.connected = false;
+        if (isOnlineHost()) log('⚠️ Ошибка соединения с другом.', 'system');
+        if (isOnlineGuest()) {
+            log('⚠️ Ошибка соединения с хостом.', 'system');
+            renderGuestActionPanel();
+        }
+    });
+}
+
+function startOnlineHostLobby() {
+    if (!supportsOnlineCoop()) {
+        log('⚠️ Онлайн-кооп недоступен: PeerJS не загрузился.', 'system');
+        return;
+    }
+
+    stopOnlineCoop();
+    resetGameState();
+    isCoop = true;
+    coopSelectionStep = 1;
+    switchTab('adventure');
+
+    onlineCoop.enabled = true;
+    onlineCoop.role = 'host';
+    onlineCoop.connected = false;
+
+    if (logBox) {
+        logBox.innerHTML = '<div class="log-entry story">Создаём токен для подключения друга...</div>';
+    }
+    if (actionButtons) {
+        actionButtons.innerHTML = '';
+        var backBtn = createActionBtn('↩️ Назад к выбору режима', function () {
+            stopOnlineCoop();
+            resetGameState();
+            showModeSelect();
+        }, 'action-btn btn-muted');
+        backBtn.style.marginTop = '8px';
+    }
+
+    var token = makeOnlineToken();
+    onlineCoop.peer = new Peer(token);
+
+    onlineCoop.peer.on('open', function (id) {
+        onlineCoop.token = id;
+        initClassSelect();
+        log('🧷 Токен сессии: <b>' + id.toUpperCase() + '</b>', 'level-up');
+        log('📋 Друг открывает игру, жмёт "Подключиться по токену" и вводит этот код.', 'system');
+    });
+
+    onlineCoop.peer.on('connection', function (conn) {
+        if (onlineCoop.conn && onlineCoop.conn.open) {
+            try { conn.close(); } catch (e) { }
+            return;
+        }
+        bindOnlineConnection(conn);
+    });
+
+    onlineCoop.peer.on('error', function (err) {
+        log('⚠️ Не удалось создать токен: ' + ((err && err.type) ? err.type : 'network-error'), 'system');
+        stopOnlineCoop();
+    });
+}
+
+function startOnlineGuestLobby(tokenInput) {
+    if (!supportsOnlineCoop()) {
+        log('⚠️ Онлайн-кооп недоступен: PeerJS не загрузился.', 'system');
+        return;
+    }
+
+    var hostToken = normalizeOnlineToken(tokenInput);
+    if (!hostToken) {
+        log('⚠️ Пустой токен. Попробуйте ещё раз.', 'system');
+        return;
+    }
+
+    stopOnlineCoop();
+    resetGameState();
+    isCoop = true;
+    coopSelectionStep = 1;
+    switchTab('adventure');
+
+    onlineCoop.enabled = true;
+    onlineCoop.role = 'guest';
+    onlineCoop.connected = false;
+    onlineCoop.token = hostToken;
+
+    if (logBox) {
+        logBox.innerHTML = '<div class="log-entry story">Подключение к хосту <b>' + hostToken.toUpperCase() + '</b>...</div>';
+    }
+    if (actionButtons) actionButtons.innerHTML = '';
+    renderGuestActionPanel();
+
+    onlineCoop.peer = new Peer();
+
+    onlineCoop.peer.on('open', function () {
+        var conn = onlineCoop.peer.connect(hostToken, { reliable: true, serialization: 'json' });
+        bindOnlineConnection(conn);
+    });
+
+    onlineCoop.peer.on('error', function (err) {
+        log('⚠️ Ошибка подключения: ' + ((err && err.type) ? err.type : 'network-error'), 'system');
+        renderGuestActionPanel();
+    });
+}
+
+function promptOnlineJoin() {
+    var token = window.prompt('Введите токен друга (пример: DQ-ABC12345):', '');
+    if (!token) return;
+    startOnlineGuestLobby(token);
+}
+
+function guardGuestReadOnly() {
+    if (!isOnlineGuest()) return false;
+    log('ℹ️ В онлайн-коопе этим действием управляет хост.', 'system');
+    return true;
+}
+
 // ─────────────────────────────────────────────────────
 // 3. CANVAS PARTICLE BACKGROUND
 // ─────────────────────────────────────────────────────
@@ -184,6 +624,7 @@ function log(text, type) {
     entry.innerHTML = text;
     logBox.appendChild(entry);
     logBox.scrollTop = logBox.scrollHeight;
+    if (!onlineCoop.applyingSnapshot) scheduleOnlineSync(30);
 }
 
 function switchTab(tabName) {
@@ -214,7 +655,7 @@ function updateStats() {
         if (soloWrap) soloWrap.style.display = 'none';
         if (coopWrap) coopWrap.style.display = 'flex';
 
-        var pct1 = Math.max(0, Math.min(1, player.hp / player.maxHp));
+        var pct1 = player.maxHp > 0 ? Math.max(0, Math.min(1, player.hp / player.maxHp)) : 0;
         var fill1 = document.getElementById('hp-bar-fill-p1');
         var text1 = document.getElementById('hp-bar-text-p1');
         var lbl1 = document.getElementById('hp-p1-label');
@@ -226,7 +667,7 @@ function updateStats() {
         if (text1) text1.textContent = player.hp + '/' + player.maxHp;
         if (lbl1) lbl1.textContent = 'P1: ' + player.classTitle;
 
-        var pct2 = Math.max(0, Math.min(1, player2.hp / player2.maxHp));
+        var pct2 = player2.maxHp > 0 ? Math.max(0, Math.min(1, player2.hp / player2.maxHp)) : 0;
         var fill2 = document.getElementById('hp-bar-fill-p2');
         var text2 = document.getElementById('hp-bar-text-p2');
         var lbl2 = document.getElementById('hp-p2-label');
@@ -241,7 +682,7 @@ function updateStats() {
         if (soloWrap) soloWrap.style.display = 'block';
         if (coopWrap) coopWrap.style.display = 'none';
 
-        var pct = Math.max(0, Math.min(1, player.hp / player.maxHp));
+        var pct = player.maxHp > 0 ? Math.max(0, Math.min(1, player.hp / player.maxHp)) : 0;
         var hpFill = document.getElementById('hp-bar-fill');
         var hpText = document.getElementById('hp-bar-text');
         if (hpFill) {
@@ -308,11 +749,18 @@ function updateStats() {
     if (btnInv) btnInv.disabled = false;
 
     saveGame();
+    if (!onlineCoop.applyingSnapshot) scheduleOnlineSync(60);
+    if (isOnlineGuest()) renderGuestActionPanel();
 }
 
 function updatePotionBar() {
     var bar = document.getElementById('potion-quickbar');
     if (!bar || !player.classKey) return;
+    if (isOnlineGuest()) {
+        bar.style.display = 'none';
+        bar.innerHTML = '';
+        return;
+    }
     bar.style.display = (player.potions > 0) ? 'flex' : 'none';
     bar.innerHTML = '';
 
@@ -347,10 +795,13 @@ function updateEnemyHpBar() {
     var fill = document.getElementById('enemy-hp-fill');
     var lbl = document.getElementById('enemy-name-label');
     if (fill) {
-        var pct = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+        var pct = enemy.maxHp > 0 ? Math.max(0, Math.min(1, enemy.hp / enemy.maxHp)) : 1;
         fill.style.width = (pct * 100) + '%';
     }
-    if (lbl) lbl.textContent = enemy.name + ' (' + Math.max(0, enemy.hp) + '/' + enemy.maxHp + ')';
+    if (lbl) {
+        if (enemy.maxHp > 0) lbl.textContent = enemy.name + ' (' + Math.max(0, enemy.hp) + '/' + enemy.maxHp + ')';
+        else lbl.textContent = enemy.name || 'Враг';
+    }
 }
 
 function renderMinimap() {
@@ -483,7 +934,7 @@ function toggleSetting(key) {
 }
 
 function saveGame() {
-    if (!player.classKey) return;
+    if (!player.classKey || onlineCoop.enabled) return;
     try {
         localStorage.setItem('dqSave', JSON.stringify({
             player: player, bag: bag,
@@ -588,6 +1039,9 @@ function initClassSelect() {
             else if (coopSelectionStep === 2) msg = "👥 <b>Шаг 2 из 2:</b> Выберите <b>Второго Героя</b> для вашего отряда...";
         }
         logBox.innerHTML = '<div class="log-entry story">' + msg + '</div>';
+        if (isOnlineHost() && onlineCoop.token) {
+            logBox.innerHTML += '<div class="log-entry system">🧷 Токен сессии: <b>' + onlineCoop.token.toUpperCase() + '</b></div>';
+        }
     }
 
     actionButtons.innerHTML = '';
@@ -614,6 +1068,7 @@ function initClassSelect() {
     });
 
     actionButtons.appendChild(grid);
+    scheduleOnlineSync(20);
 }
 
 function previewClass(className) {
@@ -780,6 +1235,7 @@ function offerNextStep() {
 }
 
 function triggerRandomEvent() {
+    if (guardGuestReadOnly()) return;
     switchTab('adventure');
     eventIndex++;
     gameStats.roomsCleared++;
@@ -846,6 +1302,7 @@ function triggerRandomEvent() {
 }
 
 function handlePathOutcome(action, logic, hero) {
+    if (guardGuestReadOnly()) return;
     var actingHero = hero || player;
     if (logic === 'trap') {
         log('🛑 <b>ПРОВАЛ!</b> Вы спровоцировали скрытую засаду!', 'combat');
@@ -921,6 +1378,7 @@ function renderShop() {
 }
 
 function buyShopItem(item) {
+    if (guardGuestReadOnly()) return;
     if (player.gold < item.cost) return;
     player.gold -= item.cost;
 
@@ -1058,6 +1516,13 @@ function showCombatOptions() {
         actionButtons.appendChild(header);
     }
 
+    if (isOnlineHost() && onlineCoop.connected && combatTurnState === 'hero2') {
+        var waitBtn = createActionBtn('⏳ Ход друга (P2): ожидаем действие...', function () { }, 'action-btn btn-muted');
+        waitBtn.disabled = true;
+        scheduleOnlineSync(20);
+        return;
+    }
+
     // Render attacks for the activeHero
     createActionBtn('⚔️ Молниеносный выпад (DC 8)', function () { playerAttack(false, activeHero); }, 'action-btn btn-primary');
     createActionBtn('🎲 Мощный удар (DC 12) — ×1.6 урона', function () { playerAttack(true, activeHero); }, 'action-btn btn-danger');
@@ -1070,6 +1535,7 @@ function showCombatOptions() {
     );
     abilityBtn.id = 'btn-class-ability';
     if (!activeHero.abilityReady) abilityBtn.disabled = true;
+    scheduleOnlineSync(20);
 }
 
 function getClassAbilityDataFor(hero) {
@@ -1087,6 +1553,7 @@ function disableCombatButtons() {
 }
 
 function useClassAbilityFor(hero) {
+    if (guardGuestReadOnly()) return;
     if (!hero.abilityReady || combatLocked) return;
     hero.abilityReady = false;
     combatLocked = true;
@@ -1174,6 +1641,7 @@ function processStatusEffects() {
 }
 
 function playerAttack(isHeavy, hero) {
+    if (guardGuestReadOnly()) return;
     if (combatLocked) return;
     combatLocked = true;
     disableCombatButtons();
@@ -1401,6 +1869,7 @@ function resolveEnemyDeath() {
 // 12. POTIONS
 // ─────────────────────────────────────────────────────
 function usePotion() {
+    if (guardGuestReadOnly()) return;
     if (player.potions <= 0 || player.hp >= player.maxHp) return;
     var healAmt = 40;
     if (player.classKey === 'ALCHEMIST') healAmt = Math.floor(healAmt * 1.5);
@@ -1412,6 +1881,7 @@ function usePotion() {
 }
 
 function usePotionForHero(heroIdx) {
+    if (guardGuestReadOnly()) return;
     if (player.potions <= 0) return;
     var target = (heroIdx === 0) ? player : player2;
     if (target.hp >= target.maxHp || target.hp <= 0) return;
@@ -1556,6 +2026,7 @@ function renderInventoryTab() {
 }
 
 function equipItem(idx) {
+    if (guardGuestReadOnly()) return;
     var activeHero = (selectedHeroInvTab === 0 || !isCoop) ? player : player2;
     var item = bag.splice(idx, 1)[0];
     if (item.type === 'weapon') {
@@ -1594,6 +2065,7 @@ function initLoot() {
 }
 
 function resolveLoot() {
+    if (guardGuestReadOnly()) return;
     if (Math.random() < 0.30) {
         var goldBonus = Math.floor(Math.random() * 35) + 20;
         player.gold += goldBonus;
@@ -1637,6 +2109,7 @@ function initTrap() {
 }
 
 function resolveTrap() {
+    if (guardGuestReadOnly()) return;
     var scoutAlive = (player.classKey === 'SCOUT' && player.hp > 0) || (isCoop && player2.classKey === 'SCOUT' && player2.hp > 0);
     
     if (scoutAlive) {
@@ -1769,6 +2242,8 @@ function shareScore() {
 // 18. CONTINUE GAME (Save/Load)
 // ─────────────────────────────────────────────────────
 function showModeSelect() {
+    if (onlineCoop.enabled) stopOnlineCoop();
+
     adjustTheaterLayout('single');
     var pTheater = document.getElementById('player-theater');
     if (pTheater) pTheater.style.visibility = 'hidden';
@@ -1801,6 +2276,28 @@ function showModeSelect() {
         initClassSelect();
     };
     actionButtons.appendChild(coopBtn);
+
+    if (supportsOnlineCoop()) {
+        var hostBtn = document.createElement('button');
+        hostBtn.className = 'action-btn btn-danger';
+        hostBtn.style.padding = '14px 16px';
+        hostBtn.style.marginTop = '6px';
+        hostBtn.innerHTML = '<strong>🌐 Хост по токену</strong><br><small style="color:var(--text-secondary); font-size:0.72rem;">Создайте токен и отправьте другу для подключения.</small>';
+        hostBtn.onclick = function () {
+            startOnlineHostLobby();
+        };
+        actionButtons.appendChild(hostBtn);
+
+        var joinBtn = document.createElement('button');
+        joinBtn.className = 'action-btn btn-muted';
+        joinBtn.style.padding = '12px 16px';
+        joinBtn.style.marginTop = '6px';
+        joinBtn.innerHTML = '<strong>🔗 Подключиться по токену</strong><br><small style="color:var(--text-secondary); font-size:0.72rem;">Введите токен, который прислал друг.</small>';
+        joinBtn.onclick = function () {
+            promptOnlineJoin();
+        };
+        actionButtons.appendChild(joinBtn);
+    }
 }
 
 function showContinuePrompt() {
@@ -1858,6 +2355,8 @@ function showContinuePrompt() {
 }
 
 function resetGameState() {
+    if (onlineCoop.enabled) stopOnlineCoop();
+
     isCoop = false;
     activeHeroIndex = 0;
     coopSelectionStep = 0;
