@@ -1674,15 +1674,9 @@ function triggerRandomEvent() {
     // Tech options for living classes
     var hasP1Ability = player.hp > 0;
     var hasP2Ability = isCoop && player2.hp > 0;
-    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
     setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability });
 
     actionButtons.innerHTML = '';
-    if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
-        var waitPathBtn = createActionBtn('⏳ Сейчас выбор пути за другом', function () { }, 'action-btn btn-muted');
-        waitPathBtn.disabled = true;
-        return;
-    }
 
     createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () {
         if (isOnlineHost() && onlineCoop.connected) { onlineCoop.pendingPathChoices.p1 = 'cautious'; resolvePathChoiceIfReady(); return; }
