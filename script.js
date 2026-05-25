@@ -597,7 +597,22 @@ function renderDiscussionUi(isGuestView) {
     box.innerHTML = '<div class="log-entry story"><b>🧭 Решения расходятся:</b> P1 → ' + p1Choice + ', P2 → ' + p2Choice + '.</div>';
     var list = document.createElement('div');
     list.className = 'discussion-chat-list';
-    list.innerHTML = chat.map(function (m) { return '<div class="log-entry normal"><b>' + m.author + ':</b> ' + m.text + '</div>'; }).join('') || '<div class="log-entry system">Чат пуст. Обсудите и примите решение.</div>';
+    if (chat.length) {
+        chat.forEach(function (m) {
+            var row = document.createElement('div');
+            row.className = 'log-entry normal';
+            var author = document.createElement('b');
+            author.textContent = (m.author || 'Игрок') + ': ';
+            row.appendChild(author);
+            row.appendChild(document.createTextNode(m.text || ''));
+            list.appendChild(row);
+        });
+    } else {
+        var emptyRow = document.createElement('div');
+        emptyRow.className = 'log-entry system';
+        emptyRow.textContent = 'Чат пуст. Обсудите и примите решение.';
+        list.appendChild(emptyRow);
+    }
     box.appendChild(list);
     var input = document.createElement('input');
     input.className = 'discussion-chat-input';
