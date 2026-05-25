@@ -132,7 +132,12 @@ var onlineCoop = {
     token: '',
     connected: false,
     syncTimer: null,
-    applyingSnapshot: false
+    applyingSnapshot: false,
+    processingRemoteCommand: false,
+    turn: 'p1',
+    uiState: 'none',
+    uiData: null,
+    pendingPathLogic: null
 };
 
 function supportsOnlineCoop() {
@@ -166,6 +171,11 @@ function stopOnlineCoop() {
     onlineCoop.token = '';
     onlineCoop.connected = false;
     onlineCoop.applyingSnapshot = false;
+    onlineCoop.processingRemoteCommand = false;
+    onlineCoop.turn = 'p1';
+    onlineCoop.uiState = 'none';
+    onlineCoop.uiData = null;
+    onlineCoop.pendingPathLogic = null;
 }
 
 function makeOnlineToken() {
@@ -174,11 +184,45 @@ function makeOnlineToken() {
     for (var i = 0; i < 8; i++) {
         out += alphabet[Math.floor(Math.random() * alphabet.length)];
     }
-    return out.toLowerCase();
+    return out;
 }
 
 function normalizeOnlineToken(value) {
-    return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function setOnlineUiState(state, data) {
+    if (!onlineCoop.enabled) return;
+    onlineCoop.uiState = state || 'none';
+    onlineCoop.uiData = data || null;
+    scheduleOnlineSync(20);
+}
+
+function onlineTurnLabel() {
+    return onlineCoop.turn === 'p2' ? 'P2' : 'P1';
+}
+
+function canHostActInOnlineTurn() {
+    if (!isOnlineHost() || !onlineCoop.connected) return true;
+    if (onlineCoop.processingRemoteCommand) return true;
+    return onlineCoop.turn === 'p1';
+}
+
+function canGuestActInOnlineTurn() {
+    if (!isOnlineGuest() || !onlineCoop.connected) return false;
+    return onlineCoop.turn === 'p2';
+}
+
+function advanceOnlineTurn() {
+    if (!isOnlineHost() || !onlineCoop.connected) return;
+    onlineCoop.turn = (onlineCoop.turn === 'p1') ? 'p2' : 'p1';
+    scheduleOnlineSync(20);
+}
+
+function guardHostTurnOnly(actionTitle) {
+    if (canHostActInOnlineTurn()) return false;
+    log('⏳ Сейчас ход друга (' + onlineTurnLabel() + '). Действие: ' + actionTitle, 'system');
+    return true;
 }
 
 function sendOnlinePacket(packet) {
@@ -204,6 +248,10 @@ function buildOnlineSnapshot() {
         gameStats: gameStats,
         inCombat: inCombat,
         combatLocked: combatLocked,
+        onlineTurn: onlineCoop.turn,
+        onlineUiState: onlineCoop.uiState,
+        onlineUiData: onlineCoop.uiData,
+        pendingPathLogic: onlineCoop.pendingPathLogic,
         player: player,
         player2: player2
     };
@@ -304,37 +352,106 @@ function renderGuestActionPanel() {
         return;
     }
 
-    if (!inCombat) {
-        var waitExploreBtn = createActionBtn('🧭 Ход хоста: исследование подземелья', function () { }, 'action-btn btn-muted');
+    var isGuestTurn = canGuestActInOnlineTurn();
+
+    if (inCombat) {
+        if (combatTurnState !== 'hero2' || player2.hp <= 0 || combatLocked) {
+            var waitTurnBtn = createActionBtn('⏳ Ожидание вашего боевого хода...', function () { }, 'action-btn btn-muted');
+            waitTurnBtn.disabled = true;
+            return;
+        }
+
+        createActionBtn('⚔️ Молниеносный выпад (P2)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'hero2_attack', heavy: false });
+        }, 'action-btn btn-primary');
+
+        createActionBtn('🎲 Мощный удар (P2)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'hero2_attack', heavy: true });
+        }, 'action-btn btn-danger');
+
+        var abilityData = getClassAbilityDataFor(player2);
+        var abilityBtn = createActionBtn(abilityData.name, function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'hero2_ability' });
+        }, 'action-btn btn-ability');
+        abilityBtn.disabled = !player2.abilityReady;
+
+        var canPotion = player.potions > 0 && player2.hp > 0 && player2.hp < player2.maxHp;
+        var potionBtn = createActionBtn('🧪 Выпить зелье (P2)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'hero2_potion' });
+        }, 'action-btn btn-success');
+        potionBtn.disabled = !canPotion;
+        return;
+    }
+
+    if (!isGuestTurn) {
+        var waitExploreBtn = createActionBtn('🧭 Ход хоста: ' + onlineTurnLabel(), function () { }, 'action-btn btn-muted');
         waitExploreBtn.disabled = true;
         return;
     }
 
-    if (combatTurnState !== 'hero2' || player2.hp <= 0 || combatLocked) {
-        var waitTurnBtn = createActionBtn('⏳ Ожидание вашего боевого хода...', function () { }, 'action-btn btn-muted');
-        waitTurnBtn.disabled = true;
+    if (onlineCoop.uiState === 'next_step') {
+        createActionBtn('🚪 Исследовать следующую зону', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'explore_next' });
+        }, 'action-btn btn-primary');
         return;
     }
 
-    createActionBtn('⚔️ Молниеносный выпад (P2)', function () {
-        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_attack', heavy: false });
-    }, 'action-btn btn-primary');
+    if (onlineCoop.uiState === 'path_choice') {
+        createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'cautious' });
+        }, 'action-btn btn-muted');
+        createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'aggressive' });
+        }, 'action-btn btn-danger');
+        createActionBtn('🗣️ Вызвать скрытые силы (Диалог)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'social' });
+        }, 'action-btn btn-purple');
+        if (onlineCoop.uiData && onlineCoop.uiData.canClassP1) {
+            createActionBtn('🔮 Техника P1 (' + player.classTitle + ')', function () {
+                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p1' });
+            }, 'action-btn btn-primary');
+        }
+        if (onlineCoop.uiData && onlineCoop.uiData.canClassP2) {
+            createActionBtn('🔮 Техника P2 (' + player2.classTitle + ')', function () {
+                sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'class_p2' });
+            }, 'action-btn btn-purple');
+        }
+        createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'path_action', action: 'crazy' });
+        }, 'action-btn btn-danger');
+        return;
+    }
 
-    createActionBtn('🎲 Мощный удар (P2)', function () {
-        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_attack', heavy: true });
-    }, 'action-btn btn-danger');
+    if (onlineCoop.uiState === 'shop') {
+        ShopCatalog.forEach(function (item) {
+            var canAfford = player.gold >= item.cost;
+            var btn = createActionBtn(item.name + ' — 💰 ' + item.cost, function () {
+                sendOnlinePacket({ type: 'cmd', cmd: 'shop_buy', itemId: item.id });
+            }, 'action-btn btn-gold' + (canAfford ? '' : ' disabled-look'));
+            btn.disabled = !canAfford;
+        });
+        createActionBtn('↩️ Покинуть лавку', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'shop_exit' });
+        }, 'action-btn btn-muted');
+        return;
+    }
 
-    var abilityData = getClassAbilityDataFor(player2);
-    var abilityBtn = createActionBtn(abilityData.name, function () {
-        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_ability' });
-    }, 'action-btn btn-ability');
-    abilityBtn.disabled = !player2.abilityReady;
+    if (onlineCoop.uiState === 'loot') {
+        createActionBtn('🔑 Открыть крышку', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'loot_open' });
+        }, 'action-btn btn-success');
+        return;
+    }
 
-    var canPotion = player.potions > 0 && player2.hp > 0 && player2.hp < player2.maxHp;
-    var potionBtn = createActionBtn('🧪 Выпить зелье (P2)', function () {
-        sendOnlinePacket({ type: 'cmd', cmd: 'hero2_potion' });
-    }, 'action-btn btn-success');
-    potionBtn.disabled = !canPotion;
+    if (onlineCoop.uiState === 'trap') {
+        createActionBtn('🤸 Рефлекторный кувырок', function () {
+            sendOnlinePacket({ type: 'cmd', cmd: 'trap_resolve' });
+        }, 'action-btn btn-danger');
+        return;
+    }
+
+    var waitStateBtn = createActionBtn('⏳ Ожидание хоста...', function () { }, 'action-btn btn-muted');
+    waitStateBtn.disabled = true;
 }
 
 function applyOnlineSnapshot(packet) {
@@ -360,6 +477,10 @@ function applyOnlineSnapshot(packet) {
     gameStats = s.gameStats || gameStats;
     inCombat = !!s.inCombat;
     combatLocked = !!s.combatLocked;
+    onlineCoop.turn = s.onlineTurn || onlineCoop.turn || 'p1';
+    onlineCoop.uiState = s.onlineUiState || 'none';
+    onlineCoop.uiData = s.onlineUiData || null;
+    onlineCoop.pendingPathLogic = s.pendingPathLogic || null;
     player = s.player || player;
     player2 = s.player2 || player2;
 
@@ -383,27 +504,73 @@ function handleHostCommand(packet) {
     if (!isOnlineHost() || !packet) return;
     if (!isCoop) return;
 
-    if (packet.cmd === 'select_class') {
-        if (coopSelectionStep === 2 && !player2.classKey && packet.classKey) {
-            selectClass(packet.classKey);
+    onlineCoop.processingRemoteCommand = true;
+    try {
+        if (packet.cmd === 'select_class') {
+            if (coopSelectionStep === 2 && !player2.classKey && packet.classKey) {
+                selectClass(packet.classKey);
+            }
+            return;
         }
-        return;
-    }
 
-    if (!inCombat || combatTurnState !== 'hero2' || combatLocked || player2.hp <= 0) {
-        return;
-    }
+        if (packet.cmd === 'explore_next') {
+            if (onlineCoop.turn === 'p2' && onlineCoop.uiState === 'next_step') triggerRandomEvent();
+            return;
+        }
 
-    if (packet.cmd === 'hero2_attack') {
-        playerAttack(!!packet.heavy, player2);
-        return;
-    }
-    if (packet.cmd === 'hero2_ability') {
-        useClassAbilityFor(player2);
-        return;
-    }
-    if (packet.cmd === 'hero2_potion') {
-        usePotionForHero(1);
+        if (packet.cmd === 'path_action') {
+            if (onlineCoop.turn !== 'p2' || onlineCoop.uiState !== 'path_choice') return;
+            var action = packet.action;
+            var logic = onlineCoop.pendingPathLogic || 'normal';
+            if (action === 'aggressive') worldMemory.playerIsRuthless = true;
+            if (action === 'social' && !worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true;
+            if (action === 'class_p1') { handlePathOutcome('class', logic, player); return; }
+            if (action === 'class_p2') { handlePathOutcome('class', logic, player2); return; }
+            if (action === 'cautious' || action === 'aggressive' || action === 'social' || action === 'crazy') {
+                handlePathOutcome(action, logic);
+            }
+            return;
+        }
+
+        if (packet.cmd === 'shop_buy') {
+            if (onlineCoop.turn !== 'p2' || onlineCoop.uiState !== 'shop') return;
+            var item = ShopCatalog.find(function (s) { return s.id === packet.itemId; });
+            if (item) buyShopItem(item);
+            return;
+        }
+
+        if (packet.cmd === 'shop_exit') {
+            if (onlineCoop.turn === 'p2' && onlineCoop.uiState === 'shop') handleShopExit();
+            return;
+        }
+
+        if (packet.cmd === 'loot_open') {
+            if (onlineCoop.turn === 'p2' && onlineCoop.uiState === 'loot') resolveLoot();
+            return;
+        }
+
+        if (packet.cmd === 'trap_resolve') {
+            if (onlineCoop.turn === 'p2' && onlineCoop.uiState === 'trap') resolveTrap();
+            return;
+        }
+
+        if (!inCombat || combatTurnState !== 'hero2' || combatLocked || player2.hp <= 0) {
+            return;
+        }
+
+        if (packet.cmd === 'hero2_attack') {
+            playerAttack(!!packet.heavy, player2);
+            return;
+        }
+        if (packet.cmd === 'hero2_ability') {
+            useClassAbilityFor(player2);
+            return;
+        }
+        if (packet.cmd === 'hero2_potion') {
+            usePotionForHero(1);
+        }
+    } finally {
+        onlineCoop.processingRemoteCommand = false;
     }
 }
 
@@ -472,6 +639,10 @@ function startOnlineHostLobby() {
     onlineCoop.enabled = true;
     onlineCoop.role = 'host';
     onlineCoop.connected = false;
+    onlineCoop.turn = 'p1';
+    onlineCoop.uiState = 'class_select_p1';
+    onlineCoop.uiData = null;
+    onlineCoop.pendingPathLogic = null;
 
     if (logBox) {
         logBox.innerHTML = '<div class="log-entry story">Создаём токен для подключения друга...</div>';
@@ -532,6 +703,10 @@ function startOnlineGuestLobby(tokenInput) {
     onlineCoop.role = 'guest';
     onlineCoop.connected = false;
     onlineCoop.token = hostToken;
+    onlineCoop.turn = 'p1';
+    onlineCoop.uiState = 'class_select_p1';
+    onlineCoop.uiData = null;
+    onlineCoop.pendingPathLogic = null;
 
     if (logBox) {
         logBox.innerHTML = '<div class="log-entry story">Подключение к хосту <b>' + hostToken.toUpperCase() + '</b>...</div>';
@@ -547,7 +722,12 @@ function startOnlineGuestLobby(tokenInput) {
     });
 
     onlineCoop.peer.on('error', function (err) {
-        log('⚠️ Ошибка подключения: ' + ((err && err.type) ? err.type : 'network-error'), 'system');
+        var errType = (err && err.type) ? err.type : 'network-error';
+        if (errType === 'peer-unavailable') {
+            log('⚠️ Ошибка подключения: токен не найден или хост ещё не онлайн (peer-unavailable).', 'system');
+        } else {
+            log('⚠️ Ошибка подключения: ' + errType, 'system');
+        }
         renderGuestActionPanel();
     });
 }
@@ -1026,6 +1206,10 @@ function createActionBtn(text, fn, cssClass) {
 function initClassSelect() {
     if (!actionButtons) return;
     adjustTheaterLayout('single');
+    if (isOnlineHost() || isOnlineGuest()) {
+        if (isCoop && coopSelectionStep === 2) setOnlineUiState('class_select_p2');
+        else setOnlineUiState('class_select_p1');
+    }
 
     var pTheater = document.getElementById('player-theater');
     var p2Theater = document.getElementById('player2-theater');
@@ -1042,6 +1226,14 @@ function initClassSelect() {
         if (isOnlineHost() && onlineCoop.token) {
             logBox.innerHTML += '<div class="log-entry system">🧷 Токен сессии: <b>' + onlineCoop.token.toUpperCase() + '</b></div>';
         }
+    }
+
+    if (isOnlineHost() && onlineCoop.connected && isCoop && coopSelectionStep === 2) {
+        actionButtons.innerHTML = '';
+        var waitBtn = createActionBtn('⏳ Друг выбирает второго героя...', function () { }, 'action-btn btn-muted');
+        waitBtn.disabled = true;
+        scheduleOnlineSync(20);
+        return;
     }
 
     actionButtons.innerHTML = '';
@@ -1102,6 +1294,11 @@ function previewClass(className) {
 }
 
 function selectClass(className) {
+    if (isOnlineHost() && onlineCoop.connected && isCoop && coopSelectionStep === 2 && !onlineCoop.processingRemoteCommand) {
+        log('⏳ Выбор второго героя сейчас за другом.', 'system');
+        return;
+    }
+
     var stats = {
         TANK: { title: 'Танк', hp: 140, baseDamage: 14, speed: 3, bonus: 0 },
         BERSERK: { title: 'Берсерк', hp: 90, baseDamage: 24, speed: 6, bonus: 0 },
@@ -1141,6 +1338,10 @@ function selectClass(className) {
         if (p2Sprite) p2Sprite.innerHTML = Sprites[className];
         if (p2Name) p2Name.textContent = player2.classTitle;
 
+        if (isOnlineHost()) {
+            onlineCoop.turn = 'p1';
+            setOnlineUiState('next_step');
+        }
         log('Ваш отряд готов! <b>' + player.classTitle + '</b> и <b>' + player2.classTitle + '</b> спускаются во тьму.', 'story');
         updateStats();
         renderMinimap();
@@ -1230,12 +1431,19 @@ function offerNextStep() {
         return;
     }
 
+    setOnlineUiState('next_step');
     actionButtons.innerHTML = '';
+    if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
+        var waitBtn = createActionBtn('⏳ Сейчас ход друга: исследование зоны', function () { }, 'action-btn btn-muted');
+        waitBtn.disabled = true;
+        return;
+    }
     createActionBtn('🚪 Исследовать следующую зону', triggerRandomEvent, 'action-btn btn-primary');
 }
 
 function triggerRandomEvent() {
     if (guardGuestReadOnly()) return;
+    if (guardHostTurnOnly('Исследовать следующую зону')) return;
     switchTab('adventure');
     eventIndex++;
     gameStats.roomsCleared++;
@@ -1280,29 +1488,40 @@ function triggerRandomEvent() {
 
     var pathLogics = ['normal', 'shortcut', 'trap', 'loop'];
     var chosenLogic = pathLogics[Math.floor(Math.random() * pathLogics.length)];
+    onlineCoop.pendingPathLogic = chosenLogic;
+
+    // Tech options for living classes
+    var hasP1Ability = player.hp > 0;
+    var hasP2Ability = isCoop && player2.hp > 0;
+    setOnlineUiState('path_choice', { canClassP1: hasP1Ability, canClassP2: hasP2Ability });
 
     actionButtons.innerHTML = '';
+    if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
+        var waitPathBtn = createActionBtn('⏳ Сейчас выбор пути за другом', function () { }, 'action-btn btn-muted');
+        waitPathBtn.disabled = true;
+        return;
+    }
+
     createActionBtn('🕵️ Осторожно разведать (Скрытность)', function () { handlePathOutcome('cautious', chosenLogic); }, 'action-btn btn-muted');
     createActionBtn('🪓 Прорубаться напролом (Агрессия)', function () { worldMemory.playerIsRuthless = true; handlePathOutcome('aggressive', chosenLogic); }, 'action-btn btn-danger');
 
     var socialTxt = worldMemory.playerIsRuthless ? '🗣️ Закричать во тьму (Вас боятся)' : '🗣️ Воззвать к скрытым силам (Диалог)';
     createActionBtn(socialTxt, function () { if (!worldMemory.playerIsRuthless) worldMemory.foundAncientLore = true; handlePathOutcome('social', chosenLogic); }, 'action-btn btn-purple');
-    
-    // Tech options for living classes
-    var hasP1Ability = player.hp > 0;
-    var hasP2Ability = isCoop && player2.hp > 0;
     if (hasP1Ability) {
         createActionBtn('🔮 Использовать технику (' + player.classTitle + ')', function () { handlePathOutcome('class', chosenLogic, player); }, 'action-btn btn-primary');
     }
     if (hasP2Ability) {
         createActionBtn('🔮 Использовать технику (' + player2.classTitle + ')', function () { handlePathOutcome('class', chosenLogic, player2); }, 'action-btn btn-purple');
     }
-
     createActionBtn('🎲 Зажмуриться и прыгнуть (Безумие)', function () { handlePathOutcome('crazy', chosenLogic); }, 'action-btn btn-danger');
 }
 
 function handlePathOutcome(action, logic, hero) {
     if (guardGuestReadOnly()) return;
+    if (guardHostTurnOnly('Выбор пути')) return;
+    if (!logic && onlineCoop.pendingPathLogic) logic = onlineCoop.pendingPathLogic;
+    onlineCoop.pendingPathLogic = null;
+    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
     var actingHero = hero || player;
     if (logic === 'trap') {
         log('🛑 <b>ПРОВАЛ!</b> Вы спровоцировали скрытую засаду!', 'combat');
@@ -1357,6 +1576,13 @@ function initShopRoom() {
 
 function renderShop() {
     actionButtons.innerHTML = '';
+    setOnlineUiState('shop');
+
+    if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
+        var waitBtn = createActionBtn('⏳ Сейчас покупает друг (' + onlineTurnLabel() + ')', function () { }, 'action-btn btn-muted');
+        waitBtn.disabled = true;
+        return;
+    }
 
     ShopCatalog.forEach(function (item, idx) {
         var canAfford = player.gold >= item.cost;
@@ -1374,11 +1600,19 @@ function renderShop() {
         actionButtons.appendChild(btn);
     });
 
-    createActionBtn('↩️ Покинуть лавку', offerNextStep, 'action-btn btn-muted');
+    createActionBtn('↩️ Покинуть лавку', handleShopExit, 'action-btn btn-muted');
+}
+
+function handleShopExit() {
+    if (guardGuestReadOnly()) return;
+    if (guardHostTurnOnly('Покинуть лавку')) return;
+    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
+    offerNextStep();
 }
 
 function buyShopItem(item) {
     if (guardGuestReadOnly()) return;
+    if (guardHostTurnOnly('Покупка в лавке')) return;
     if (player.gold < item.cost) return;
     player.gold -= item.cost;
 
@@ -1415,6 +1649,7 @@ function buyShopItem(item) {
     }
 
     updateStats();
+    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
     renderShop();
 }
 
@@ -1424,6 +1659,7 @@ function buyShopItem(item) {
 function initCombat() {
     inCombat = true;
     combatLocked = false;
+    setOnlineUiState('combat');
 
     // Lock tabs during combat
     var btnStats = document.getElementById('tab-btn-stats');
@@ -2059,13 +2295,21 @@ function initLoot() {
     if (eLabel) eLabel.textContent = 'Древний Сундук';
     if (eTheater) { eTheater.style.display = 'flex'; eTheater.style.visibility = 'visible'; }
 
+    setOnlineUiState('loot');
     log('🎁 Скрытые механизмы выкатили из стены сундук!', 'loot');
     actionButtons.innerHTML = '';
+    if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
+        var waitBtn = createActionBtn('⏳ Сейчас сундук открывает друг', function () { }, 'action-btn btn-muted');
+        waitBtn.disabled = true;
+        return;
+    }
     createActionBtn('🔑 Открыть крышку', resolveLoot, 'action-btn btn-success');
 }
 
 function resolveLoot() {
     if (guardGuestReadOnly()) return;
+    if (guardHostTurnOnly('Открыть сундук')) return;
+    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
     if (Math.random() < 0.30) {
         var goldBonus = Math.floor(Math.random() * 35) + 20;
         player.gold += goldBonus;
@@ -2104,12 +2348,20 @@ function initTrap() {
     if (eLabel) eLabel.textContent = 'Активная Ловушка';
     if (eTheater) { eTheater.style.display = 'flex'; eTheater.style.visibility = 'visible'; }
 
+    setOnlineUiState('trap');
     actionButtons.innerHTML = '';
+    if (isOnlineHost() && onlineCoop.connected && !canHostActInOnlineTurn()) {
+        var waitBtn = createActionBtn('⏳ Сейчас ловушку разминирует друг', function () { }, 'action-btn btn-muted');
+        waitBtn.disabled = true;
+        return;
+    }
     createActionBtn('🤸 Рефлекторный кувырок', resolveTrap, 'action-btn btn-danger');
 }
 
 function resolveTrap() {
     if (guardGuestReadOnly()) return;
+    if (guardHostTurnOnly('Разминировать ловушку')) return;
+    if (isOnlineHost() && onlineCoop.connected) advanceOnlineTurn();
     var scoutAlive = (player.classKey === 'SCOUT' && player.hp > 0) || (isCoop && player2.classKey === 'SCOUT' && player2.hp > 0);
     
     if (scoutAlive) {
@@ -2156,6 +2408,7 @@ function resolveTrap() {
 function initBossFight() {
     inCombat = true;
     combatLocked = false;
+    setOnlineUiState('combat');
 
     var btnStats = document.getElementById('tab-btn-stats');
     var btnInv = document.getElementById('tab-btn-inventory');
@@ -2196,6 +2449,7 @@ function initBossFight() {
 function gameOver(isWin) {
     inCombat = false;
     combatLocked = false;
+    setOnlineUiState('none');
 
     var overlay = document.getElementById('endgame-overlay');
     var card = document.getElementById('endgame-card');
@@ -2389,6 +2643,10 @@ function resetGameState() {
     gameStats = { enemiesSlain: 0, goldEarned: 0, roomsCleared: 0 };
     inCombat = false;
     combatLocked = false;
+    onlineCoop.turn = 'p1';
+    onlineCoop.uiState = 'none';
+    onlineCoop.uiData = null;
+    onlineCoop.pendingPathLogic = null;
 }
 
 // ─────────────────────────────────────────────────────
